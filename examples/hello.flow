@@ -1,0 +1,10 @@
+flow hello {
+
+    let name = "world"
+    let count = 3
+
+    for i in [1, 2, 3] {
+        log("hello " + name)
+    }
+
+}
