@@ -106,7 +106,7 @@ Keywords are reserved words that have predefined meanings within the language an
 | `for` | Begins a for loop. |
 | `in` | Specifies the iterable used by a for loop. |
 | `return` | Returns a value from a task. |
-| `on_fail` | Defines failure handling for a task or step. |
+| `on_fail` | Defines failure handling for a workflow step. |
 | `true` | Boolean literal representing logical true. |
 | `false` | Boolean literal representing logical false. |
 | `and` | Logical AND operator. |
@@ -1430,7 +1430,7 @@ db_query(query)
 
 db_insert(table, record)
 
-db_update(table, record)
+db_update(table, record, updates)
 
 db_delete(table, condition)
 ```
@@ -1445,6 +1445,8 @@ db_insert("users", {
 })
 
 db_update("users", {
+    "id": 1
+}, {
     "active": true
 })
 
@@ -1875,7 +1877,7 @@ statement      := let_stmt
                  | return_stmt
                  | expr_stmt
 
-let_stmt       := "let" IDENTIFIER "=" expression NEWLINE
+let_stmt       := "let" IDENTIFIER (":" IDENTIFIER)? "=" expression NEWLINE
 
 assign_stmt    := IDENTIFIER "=" expression NEWLINE
 
@@ -1921,7 +1923,7 @@ unary          := ("not" | "-") unary
                  | call
 
 call           := primary
-                  ("(" arguments? ")")*
+                  (("." IDENTIFIER) | ("(" arguments? ")"))*
 
 primary        := NUMBER
                  | STRING
