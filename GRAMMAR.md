@@ -585,7 +585,7 @@ Logical operators combine or negate boolean expressions.
 ```flowscript
 if authenticated and verified {
 
-    send_notification("Access granted")
+    notify("Access granted")
 
 }
 ```
@@ -750,7 +750,7 @@ http_get("/users")
 
 db_query("SELECT * FROM users")
 
-send_notification("Workflow completed")
+notify("Workflow completed")
 ```
 
 Function calls may also appear within larger expressions.
@@ -876,7 +876,7 @@ A task call executes either a user-defined task or a built-in function.
 #### Examples
 
 ```flowscript
-send_notification("Workflow started")
+notify("Workflow started")
 
 http_get("/users")
 
@@ -954,7 +954,7 @@ let response = http_get("/users")
 
 db_insert("logs", response)
 
-send_notification("Workflow completed")
+notify("Workflow completed")
 ```
 
 The runtime executes these statements in the following order:
@@ -1144,7 +1144,7 @@ if response.status == 200 {
 }
 else {
 
-    send_notification("User import failed")
+    notify("User import failed")
 
 }
 ```
@@ -1208,7 +1208,7 @@ let users = ["Alice", "Bob", "Charlie"]
 
 for user in users {
 
-    send_notification(user)
+    notify(user)
 
 }
 ```
@@ -1228,7 +1228,7 @@ for user in users {
 
     if user.active {
 
-        send_notification(user.email)
+        notify(user.email)
 
     }
 
@@ -1297,7 +1297,7 @@ Parameters allow values to be passed into a task during execution.
 ```flowscript
 task send_email(email, message) {
 
-    send_notification(email, message)
+    notify(email, message)
 
 }
 ```
