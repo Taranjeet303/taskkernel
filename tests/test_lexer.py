@@ -1,20 +1,7 @@
 from flowscript.lexer import Lexer
 
-source = """
-flow user_import {
-
-    step "Fetch Users" {
-
-        let retries = 3
-
-        if retries < 5 {
-            retries = retries + 1
-        }
-
-    }
-
-}
-"""
+with open("examples/hello.flow", "r", encoding="utf-8") as f:
+    source = f.read()
 
 lexer = Lexer(source)
 tokens = lexer.tokenize()

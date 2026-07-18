@@ -1,10 +1,17 @@
-flow hello {
+flow demo {
 
-    let name = "world"
-    let count = 3
+    # This is a comment
 
-    for i in [1, 2, 3] {
-        log("hello " + name)
+    step "Test" {
+
+        let x = 3.14
+        let y = 10
+
+        on_fail {
+            publish_event("failed")
+        }
+
+        
     }
 
 }
