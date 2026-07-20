@@ -278,6 +278,13 @@ class Parser:
 
         token = self.peek()
 
+        if token.type == TokenType.EOF:
+            raise ParseError(
+                "Unexpected end of input",
+                token.line,
+                token.col
+            )
+
         raise ParseError(
             f"Unexpected token '{token.lexeme}'",
             token.line,
