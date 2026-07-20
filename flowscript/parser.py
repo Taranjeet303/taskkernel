@@ -30,8 +30,6 @@ class Parser:
         return self.peek().type == TokenType.EOF
 
     def check(self, type_: TokenType) -> bool:
-        if self.is_at_end():
-            return False
         return self.peek().type == type_
 
     def advance(self) -> Token:
@@ -113,4 +111,175 @@ class Parser:
             return UnaryOp(op_tok.lexeme, operand, op_tok.line, op_tok.col)
         return self.call()
 
-   
+    def call(self):
+        expr = self.primary()
+
+        while True:
+
+           
+            if self.match(TokenType.DOT):
+                dot = self.previous()
+
+                identifier = self.consume(
+                    TokenType.IDENTIFIER,
+                    "Expected identifier after '.'."
+                )
+
+                expr = MemberAccess(
+                    object=expr,
+                    member=identifier.lexeme,
+                    line=dot.line,
+                    col=dot.col
+                )
+
+            
+            elif self.match(TokenType.LPAREN):
+                lparen = self.previous()
+
+                arguments = []
+
+                if not self.check(TokenType.RPAREN):
+                    arguments.append(self.expression())
+
+                    while self.match(TokenType.COMMA):
+                        arguments.append(self.expression())
+
+                self.consume(
+                    TokenType.RPAREN,
+                    "Expected ')' after arguments."
+                )
+
+                expr = Call(
+                    callee=expr,
+                    arguments=arguments,
+                    line=lparen.line,
+                    col=lparen.col
+                )
+
+            else:
+                break
+
+        return expr
+
+
+    def primary(self):
+
+        if self.match(TokenType.NUMBER):
+            token = self.previous()
+            return NumberLiteral(
+                value=token.literal,
+                line=token.line,
+                col=token.col
+            )
+
+        if self.match(TokenType.STRING):
+            token = self.previous()
+            return StringLiteral(
+                value=token.literal,
+                line=token.line,
+                col=token.col
+            )
+
+        if self.match(TokenType.TRUE, TokenType.FALSE):
+            token = self.previous()
+            return BooleanLiteral(
+                value=token.literal,
+                line=token.line,
+                col=token.col
+            )
+
+        if self.match(TokenType.IDENTIFIER):
+            token = self.previous()
+            return Identifier(
+                name=token.lexeme,
+                line=token.line,
+                col=token.col
+            )
+
+        if self.match(TokenType.LPAREN):
+            expr = self.expression()
+
+            self.consume(
+                TokenType.RPAREN,
+                "Expected ')' after expression."
+            )
+
+            return expr
+
+        if self.match(TokenType.LBRACKET):
+            start = self.previous()
+
+            elements = []
+
+            if not self.check(TokenType.RBRACKET):
+                elements.append(self.expression())
+
+                while self.match(TokenType.COMMA):
+                    elements.append(self.expression())
+
+            self.consume(
+                TokenType.RBRACKET,
+                "Expected ']' after list."
+            )
+
+            return ListLiteral(
+                elements=elements,
+                line=start.line,
+                col=start.col
+            )
+
+        if self.match(TokenType.LBRACE):
+            start = self.previous()
+
+            fields = {}
+
+            if not self.check(TokenType.RBRACE):
+
+                key = self.consume(
+                    TokenType.STRING,
+                    "Expected string key."
+                )
+
+                self.consume(
+                    TokenType.COLON,
+                    "Expected ':' after key."
+                )
+
+                value = self.expression()
+
+                fields[key.literal] = value
+
+                while self.match(TokenType.COMMA):
+
+                    key = self.consume(
+                        TokenType.STRING,
+                        "Expected string key."
+                    )
+
+                    self.consume(
+                        TokenType.COLON,
+                        "Expected ':' after key."
+                    )
+
+                    value = self.expression()
+
+                    fields[key.literal] = value
+
+            self.consume(
+                TokenType.RBRACE,
+                "Expected '}' after record."
+            )
+
+            return RecordLiteral(
+                fields=fields,
+                line=start.line,
+                col=start.col
+    )
+
+        token = self.peek()
+
+        raise ParseError(
+            f"Unexpected token '{token.lexeme}'",
+            token.line,
+            token.col
+        )
