@@ -126,7 +126,7 @@ class Parser:
                 )
 
                 expr = MemberAccess(
-                    object=expr,
+                    base=expr,
                     member=identifier.lexeme,
                     line=dot.line,
                     col=dot.col
