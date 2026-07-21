@@ -1,7 +1,35 @@
 from .tokens import Token, TokenType
 from .ast_nodes import (
-    NumberLiteral, StringLiteral, BooleanLiteral, ListLiteral,
-    RecordLiteral, Identifier, BinaryOp, UnaryOp, Call, MemberAccess
+    # Base expression nodes
+    NumberLiteral,
+    StringLiteral,
+    BooleanLiteral,
+    Identifier,
+    BinaryOp,
+    UnaryOp,
+    Call,
+    MemberAccess,
+    ListLiteral,
+    RecordLiteral,
+
+    # Statement nodes
+    LetStmt,
+    AssignStmt,
+    IfStmt,
+    WhileStmt,
+    ForStmt,
+    ReturnStmt,
+    ExprStmt,
+
+    # Helper nodes
+    Parameter,
+
+    # Top-level nodes
+    TaskDef,
+    OnFailClause,
+    StepDef,
+    FlowDef,
+    Program,
 )
 
 
@@ -22,6 +50,11 @@ class Parser:
 
     def peek(self) -> Token:
         return self.tokens[self.pos]
+    
+    def peek_next(self) -> Token:
+        if self.pos + 1 >= len(self.tokens):
+            return self.tokens[-1]
+        return self.tokens[self.pos + 1]
 
     def previous(self) -> Token:
         return self.tokens[self.pos - 1]
@@ -51,7 +84,7 @@ class Parser:
         raise ParseError(message, tok.line, tok.col)
 
     # ---------- expression grammar (precedence climbing) ----------
-    # Mirrors GRAMMAR.md Section 15 exactly, lowest to highest precedence.
+    
 
     def expression(self):
         return self.logical_or()
@@ -290,3 +323,389 @@ class Parser:
             token.line,
             token.col
         )
+    
+#--------------statement parsing--------------------------
+    def let_statement(self):
+        let_tok = self.consume(TokenType.LET, "Expected 'let'.")
+        
+        name_tok = self.consume(TokenType.IDENTIFIER, "Expected variable name.")
+        
+        type_annotation = None
+        if self.match(TokenType.COLON):
+            type_tok = self.consume(TokenType.IDENTIFIER, "Expected type name after ':'.")
+            type_annotation = type_tok.lexeme
+        
+        self.consume(TokenType.EQ, "Expected '=' after variable name.")
+        
+        value = self.expression()
+        
+        self.consume(TokenType.NEWLINE, "Expected newline after variable declaration.")
+        
+        return LetStmt(
+            name=name_tok.lexeme,
+            type_annotation=type_annotation,
+            value=value,
+            line=let_tok.line,
+            col=let_tok.col
+        )    
+    
+    def assign_statement(self):
+        identifier_tok = self.consume(
+            TokenType.IDENTIFIER,
+            "Expected variable name."
+        )
+
+        self.consume(
+            TokenType.EQ,
+            "Expected '=' after variable name."
+        )
+
+        value = self.expression()
+
+        self.consume(
+            TokenType.NEWLINE,
+            "Expected newline after assignment."
+        )
+
+        return AssignStmt(
+            target=Identifier(
+                name=identifier_tok.lexeme,
+                line=identifier_tok.line,
+                col=identifier_tok.col,
+            ),
+            value=value,
+            line=identifier_tok.line,
+            col=identifier_tok.col,
+        )
+    
+    def if_statement(self):
+        if_tok = self.consume(
+            TokenType.IF,
+            "Expected 'if'."
+        )
+
+        condition = self.expression()
+
+        then_branch = self.block()
+
+        else_branch = None
+
+        if self.match(TokenType.ELSE):
+            else_branch = self.block()
+
+        return IfStmt(
+            condition=condition,
+            then_branch=then_branch,
+            else_branch=else_branch,
+            line=if_tok.line,
+            col=if_tok.col,
+        )
+    
+    def while_statement(self):
+        while_tok = self.consume(
+            TokenType.WHILE,
+            "Expected 'while'."
+        )
+
+        condition = self.expression()
+
+        body = self.block()
+
+        return WhileStmt(
+            condition=condition,
+            body=body,
+            line=while_tok.line,
+            col=while_tok.col,
+        )
+    def for_statement(self):
+        for_tok = self.consume(
+            TokenType.FOR,
+            "Expected 'for'."
+        )
+
+        variable_tok = self.consume(
+            TokenType.IDENTIFIER,
+            "Expected loop variable after 'for'."
+        )
+
+        self.consume(
+            TokenType.IN,
+            "Expected 'in' after loop variable."
+        )
+
+        iterable = self.expression()
+
+        body = self.block()
+
+        return ForStmt(
+            variable=variable_tok.lexeme,
+            iterable=iterable,
+            body=body,
+            line=for_tok.line,
+            col=for_tok.col,
+        )
+    
+    def return_statement(self):
+        return_tok = self.consume(
+            TokenType.RETURN,
+            "Expected 'return'."
+        )
+
+        value = None
+
+        if not self.check(TokenType.NEWLINE):
+            value = self.expression()
+
+        self.consume(
+            TokenType.NEWLINE,
+            "Expected newline after return statement."
+        )
+
+        return ReturnStmt(
+            value=value,
+            line=return_tok.line,
+            col=return_tok.col,
+        )
+    
+    def expression_statement(self):
+        expr = self.expression()
+
+        self.consume(
+            TokenType.NEWLINE,
+            "Expected newline after expression."
+        )
+
+        return ExprStmt(
+            expression=expr,
+            line=expr.line,
+            col=expr.col,
+        )
+    
+    def statement(self):
+
+        if self.check(TokenType.LET):
+            return self.let_statement()
+
+        if (
+            self.check(TokenType.IDENTIFIER)
+            and self.peek_next().type == TokenType.EQ
+        ):
+            return self.assign_statement()
+
+        if self.check(TokenType.IF):
+            return self.if_statement()
+
+        if self.check(TokenType.WHILE):
+            return self.while_statement()
+
+        if self.check(TokenType.FOR):
+            return self.for_statement()
+
+        if self.check(TokenType.RETURN):
+            return self.return_statement()
+
+        return self.expression_statement()
+    
+    def block(self):
+        self.consume(
+            TokenType.LBRACE,
+            "Expected '{' to start block."
+        )
+
+        self.consume(
+            TokenType.NEWLINE,
+            "Expected newline after '{'."
+        )
+
+        statements = []
+
+        while not self.check(TokenType.RBRACE):
+
+            if self.is_at_end():
+                tok = self.peek()
+                raise ParseError(
+                    "Expected '}' before end of input.",
+                    tok.line,
+                    tok.col,
+                )
+
+            statements.append(self.statement())
+
+        self.consume(
+            TokenType.RBRACE,
+            "Expected '}' after block."
+        )
+
+        self.consume(
+            TokenType.NEWLINE,
+            "Expected newline after '}'."
+        )
+
+        return statements
+    
+#----------- Top-Level Parsing  ----------------------
+
+    def task_definition(self):
+        task_tok = self.consume(
+            TokenType.TASK,
+            "Expected 'task'."
+        )
+
+        name_tok = self.consume(
+            TokenType.IDENTIFIER,
+            "Expected task name."
+        )
+
+        self.consume(
+            TokenType.LPAREN,
+            "Expected '(' after task name."
+        )
+
+        params = []
+
+        if not self.check(TokenType.RPAREN):
+            while True:
+                param_tok = self.consume(
+                    TokenType.IDENTIFIER,
+                    "Expected parameter name."
+                )
+
+                type_annotation = None
+
+                if self.match(TokenType.COLON):
+                    type_tok = self.consume(
+                        TokenType.IDENTIFIER,
+                        "Expected type name after ':'."
+                    )
+                    type_annotation = type_tok.lexeme
+
+                params.append(
+                    Parameter(
+                        name=param_tok.lexeme,
+                        type_annotation=type_annotation,
+                    )
+                )
+
+                if not self.match(TokenType.COMMA):
+                    break
+
+        self.consume(
+            TokenType.RPAREN,
+            "Expected ')' after parameters."
+        )
+
+        body = self.block()
+
+        return TaskDef(
+            name=name_tok.lexeme,
+            params=params,
+            body=body,
+            line=task_tok.line,
+            col=task_tok.col,
+        )
+    
+    def on_fail_clause(self):
+        on_fail_tok = self.consume(
+            TokenType.ON_FAIL,
+            "Expected 'on_fail'."
+        )
+
+        body = self.block()
+
+        return OnFailClause(
+            body=body,
+            line=on_fail_tok.line,
+            col=on_fail_tok.col,
+        )
+    
+    def step_definition(self):
+        step_tok = self.consume(
+            TokenType.STEP,
+            "Expected 'step'."
+        )
+
+        label_tok = self.consume(
+            TokenType.STRING,
+            "Expected step label."
+        )
+
+        body = self.block()
+
+        on_fail = None
+
+        if self.check(TokenType.ON_FAIL):
+            on_fail = self.on_fail_clause()
+
+        return StepDef(
+            label=label_tok.literal,
+            body=body,
+            on_fail=on_fail,
+            line=step_tok.line,
+            col=step_tok.col,
+        )
+    
+    def flow_definition(self):
+        flow_tok = self.consume(
+            TokenType.FLOW,
+            "Expected 'flow'."
+        )
+
+        name_tok = self.consume(
+            TokenType.IDENTIFIER,
+            "Expected flow name."
+        )
+
+        self.consume(
+            TokenType.LBRACE,
+            "Expected '{' after flow name."
+        )
+
+        self.consume(
+            TokenType.NEWLINE,
+            "Expected newline after '{'."
+        )
+
+        body = []
+
+        while not self.check(TokenType.RBRACE):
+
+            if self.check(TokenType.STEP):
+                body.append(self.step_definition())
+
+            elif self.check(TokenType.TASK):
+                body.append(self.task_definition())
+
+            else:
+                body.append(self.statement())
+
+        self.consume(
+            TokenType.RBRACE,
+            "Expected '}' after flow body."
+        )
+
+        self.consume(
+            TokenType.NEWLINE,
+            "Expected newline after '}'."
+        )
+
+        return FlowDef(
+            name=name_tok.lexeme,
+            body=body,
+            line=flow_tok.line,
+            col=flow_tok.col,
+        )
+    def parse(self):
+        flows = []
+
+        if self.is_at_end():
+            tok = self.peek()
+            raise ParseError(
+                "Expected at least one flow definition.",
+                tok.line,
+                tok.col,
+            )
+
+        while not self.is_at_end():
+            flows.append(self.flow_definition())
+
+        return Program(flows=flows)

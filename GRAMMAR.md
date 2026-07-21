@@ -1955,7 +1955,7 @@ record_literal := "{"
 params         := param
                   ("," param)*
 
-param          := IDENTIFIER
+param := IDENTIFIER (":" IDENTIFIER)?
 
 
 (* ===================== LEXICAL STRUCTURE ===================== *)

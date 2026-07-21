@@ -152,6 +152,7 @@ class TaskDef:
     col: int
 
 
+
 @dataclass
 class OnFailClause:
     body: list[Stmt]
@@ -179,3 +180,4 @@ class FlowDef:
 @dataclass
 class Program:
     flows: list[FlowDef]    
+
