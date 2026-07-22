@@ -1,17 +1,52 @@
-flow demo {
-
-    # This is a comment
-
-    step "Test" {
-
-        let x = 3.14
-        let y = 10
-
-        on_fail {
-            publish_event("failed")
-        }
-
-        
+flow github_automation {
+    let x = 10
+    let y: Number = 20
+    let z = x + y * 2
+    x = x + 1
+    if x > 5 {
+        print(x)
     }
-
+    else {
+        print(0)
+    }
+    while x < 15 {
+        x = x + 1
+    }
+    let users = ["Alice", "Bob", "Charlie"]
+    for user in users {
+        print(user)
+    }
+    task greet(name: String) {
+        print(name)
+        return
+    }
+    task add(a: Number, b: Number) {
+        let result = a + b
+        return result
+    }
+    step "Collections" {
+        let numbers = [1, 2, 3, 4]
+        let person = {"name": "John", "age": 25}
+        print(person.name)
+    }
+    on_fail {
+        print("Collections step failed")
+    }
+    step "HTTP Request" {
+        let response = http_get("https://api.github.com/issues")
+        if response.status == 200 {
+            greet("Backend Team")
+        }
+        else {
+            print("Request failed")
+        }
+    }
+    on_fail {
+        print("HTTP request failed")
+    }
+    step "Math" {
+        let total = add(5, 10)
+        print(total)
+        print((10 + 20) * 3)
+    }
 }

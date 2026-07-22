@@ -83,6 +83,10 @@ class Parser:
         tok = self.peek()
         raise ParseError(message, tok.line, tok.col)
 
+    def skip_newlines(self):
+        while self.match(TokenType.NEWLINE):
+            pass
+
     # ---------- expression grammar (precedence climbing) ----------
     
 
@@ -241,6 +245,7 @@ class Parser:
 
         if self.match(TokenType.LBRACKET):
             start = self.previous()
+            self.skip_newlines()
 
             elements = []
 
@@ -248,7 +253,10 @@ class Parser:
                 elements.append(self.expression())
 
                 while self.match(TokenType.COMMA):
-                    elements.append(self.expression())
+                     self.skip_newlines()
+                     elements.append(self.expression())
+
+            self.skip_newlines()          
 
             self.consume(
                 TokenType.RBRACKET,
@@ -263,6 +271,7 @@ class Parser:
 
         if self.match(TokenType.LBRACE):
             start = self.previous()
+            self.skip_newlines()
 
             fields = {}
 
@@ -283,6 +292,7 @@ class Parser:
                 fields[key.literal] = value
 
                 while self.match(TokenType.COMMA):
+                    self.skip_newlines()
 
                     key = self.consume(
                         TokenType.STRING,
@@ -297,6 +307,8 @@ class Parser:
                     value = self.expression()
 
                     fields[key.literal] = value
+
+            self.skip_newlines()        
 
             self.consume(
                 TokenType.RBRACE,
@@ -483,6 +495,8 @@ class Parser:
     
     def statement(self):
 
+        self.skip_newlines()
+
         if self.check(TokenType.LET):
             return self.let_statement()
 
@@ -512,14 +526,16 @@ class Parser:
             "Expected '{' to start block."
         )
 
-        self.consume(
-            TokenType.NEWLINE,
-            "Expected newline after '{'."
-        )
+        self.skip_newlines()
 
         statements = []
 
-        while not self.check(TokenType.RBRACE):
+        while True:
+
+            self.skip_newlines()
+
+            if self.check(TokenType.RBRACE):
+                break
 
             if self.is_at_end():
                 tok = self.peek()
@@ -536,10 +552,7 @@ class Parser:
             "Expected '}' after block."
         )
 
-        self.consume(
-            TokenType.NEWLINE,
-            "Expected newline after '}'."
-        )
+        self.skip_newlines()
 
         return statements
     
@@ -631,6 +644,8 @@ class Parser:
 
         body = self.block()
 
+        self.skip_newlines()
+
         on_fail = None
 
         if self.check(TokenType.ON_FAIL):
@@ -660,14 +675,16 @@ class Parser:
             "Expected '{' after flow name."
         )
 
-        self.consume(
-            TokenType.NEWLINE,
-            "Expected newline after '{'."
-        )
+        self.skip_newlines()
 
         body = []
 
-        while not self.check(TokenType.RBRACE):
+        while True:
+
+            self.skip_newlines()
+
+            if self.check(TokenType.RBRACE):
+                break
 
             if self.check(TokenType.STEP):
                 body.append(self.step_definition())
@@ -683,10 +700,7 @@ class Parser:
             "Expected '}' after flow body."
         )
 
-        self.consume(
-            TokenType.NEWLINE,
-            "Expected newline after '}'."
-        )
+        self.skip_newlines()
 
         return FlowDef(
             name=name_tok.lexeme,
