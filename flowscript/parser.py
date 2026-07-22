@@ -683,6 +683,14 @@ class Parser:
 
             self.skip_newlines()
 
+            if self.is_at_end():
+                tok = self.peek()
+                raise ParseError(
+                    "Expected '}' after flow body.",
+                    tok.line,
+                    tok.col,
+                )
+
             if self.check(TokenType.RBRACE):
                 break
 
