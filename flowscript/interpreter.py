@@ -158,33 +158,61 @@ class Interpreter:
         raise FlowRuntimeError(f"Unknown operator '{op}'", node.line, node.col)
 
     def eval_UnaryOp(self, node: UnaryOp, env: Environment):
-        # YOUR TASK:
-        # operand = self.evaluate(node.operand, env)
-        # if node.operator == "not": return boolean negation
-        # if node.operator == "-": return numeric negation (raise error if not a number)
-        pass
+        operand = self.evaluate(node.operand, env)
 
-    # ---------- YOUR TASK: implement these ----------
+        if node.operator == "not":
+            return not bool(operand)
+
+        if node.operator == "-":
+            if self.is_number(operand):
+                return -operand
+
+            raise FlowRuntimeError(
+                f"Cannot apply unary '-' to {type(operand).__name__}",
+                node.line,
+                node.col,
+            )
+
+        raise FlowRuntimeError(
+            f"Unknown unary operator '{node.operator}'",
+            node.line,
+            node.col,
+    )
 
     def eval_MemberAccess(self, node: MemberAccess, env: Environment):
-        """
-        Evaluate node.base to get a value (should be a dict, since Records
-        are represented as Python dicts — see eval_RecordLiteral below).
-        Look up node.member in that dict.
-        Raise FlowRuntimeError if the base isn't a dict, or the member doesn't exist.
-        """
-        pass
+        base = self.evaluate(node.base, env)
+
+        if not isinstance(base, dict):
+            raise FlowRuntimeError(
+                "Member access is only supported on records.",
+                node.line,
+                node.col,
+            )
+
+        if node.member not in base:
+            raise FlowRuntimeError(
+                f"Record has no member '{node.member}'",
+                node.line,
+                node.col,
+            )
+
+        return base[node.member]
 
     def eval_ListLiteral(self, node: ListLiteral, env: Environment):
-        """Evaluate every element, return a Python list."""
-        pass
+        result = []
+
+        for element in node.elements:
+            result.append(self.evaluate(element, env))
+
+        return result
 
     def eval_RecordLiteral(self, node: RecordLiteral, env: Environment):
-        """
-        Evaluate every value in node.fields, return a Python dict
-        mapping the same string keys to the evaluated values.
-        """
-        pass
+        result = {}
+
+        for key, value in node.fields.items():
+            result[key] = self.evaluate(value, env)
+
+        return result
 
     def eval_Call(self, node: Call, env: Environment):
         """
