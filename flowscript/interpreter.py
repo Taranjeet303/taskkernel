@@ -9,6 +9,9 @@ class Interpreter:
     def __init__(self):
         self.globals = Environment()
 
+    def is_number(self, value) -> bool:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)    
+
     def evaluate(self, node, env: Environment):
         """Dispatch to the correct eval_* method based on node type."""
         method_name = f"eval_{type(node).__name__}"
@@ -43,27 +46,114 @@ class Interpreter:
         op = node.operator
 
         if op == "+":
-            # Note: "+" must work for both numbers (addition) AND strings (concatenation) — 
-            # check GRAMMAR.md Section 4.2. Handle both cases; raise FlowRuntimeError
-            # for invalid combinations (e.g. number + boolean).
-            if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+            if self.is_number(left) and self.is_number(right):
                 return left + right
+
             if isinstance(left, str) and isinstance(right, str):
                 return left + right
+
             raise FlowRuntimeError(
                 f"Cannot apply '+' to {type(left).__name__} and {type(right).__name__}",
-                node.line, node.col
+                node.line,
+                node.col,
             )
 
-        # YOUR TASK: implement the remaining operators below
-        # "-", "*", "/"   (numeric only — raise FlowRuntimeError otherwise; also
-        #                  handle division by zero explicitly with a clear error)
-        # "==", "!="      (works for any two values — Python's == is fine here)
-        # "<", ">", "<=", ">="   (numeric only, same pattern as above)
-        # "and", "or"     (careful: these should short-circuit conceptually, but since
-        #                  you already evaluated both `left` and `right` above before
-        #                  reaching this point, true short-circuiting requires restructuring —
-        #                  think about whether that matters for v1, and note your decision)
+        if op == "-":
+            if self.is_number(left) and self.is_number(right):
+                return left - right
+
+            raise FlowRuntimeError(
+                f"Cannot apply '-' to {type(left).__name__} and {type(right).__name__}",
+                node.line,
+                node.col,
+            )
+
+        if op == "*":
+            if self.is_number(left) and self.is_number(right):
+                return left * right
+
+
+            raise FlowRuntimeError(
+                f"Cannot apply '*' to {type(left).__name__} and {type(right).__name__}",
+                node.line,
+                node.col,
+            )
+
+        if op == "/":
+            if not self.is_number(left) or not self.is_number(right):
+                raise FlowRuntimeError(
+                    f"Cannot apply '/' to {type(left).__name__} and {type(right).__name__}",
+                    node.line,
+                    node.col,
+                )
+
+            if right == 0:
+                raise FlowRuntimeError(
+                    "Division by zero.",
+                    node.line,
+                    node.col,
+                )
+
+            return left / right
+
+        if op == "==":
+            return left == right
+
+
+        if op == "!=":
+            return left != right
+
+
+        if op == "<":
+            if self.is_number(left) and self.is_number(right):
+                return left < right
+
+            raise FlowRuntimeError(
+                f"Cannot apply '<' to {type(left).__name__} and {type(right).__name__}",
+                node.line,
+                node.col,
+            )
+
+
+        if op == ">":
+            if self.is_number(left) and self.is_number(right):
+                return left > right
+
+            raise FlowRuntimeError(
+                f"Cannot apply '>' to {type(left).__name__} and {type(right).__name__}",
+                node.line,
+                node.col,
+            )
+
+
+        if op == "<=":
+            if self.is_number(left) and self.is_number(right):
+                return left <= right
+
+            raise FlowRuntimeError(
+                f"Cannot apply '<=' to {type(left).__name__} and {type(right).__name__}",
+                node.line,
+                node.col,
+            )
+
+
+        if op == ">=":
+            if self.is_number(left) and self.is_number(right):
+                return left >= right
+
+            raise FlowRuntimeError(
+                f"Cannot apply '>=' to {type(left).__name__} and {type(right).__name__}",
+                node.line,
+                node.col,
+            )
+
+
+        if op == "and":
+            return bool(left) and bool(right)
+
+
+        if op == "or":
+            return bool(left) or bool(right)
 
         raise FlowRuntimeError(f"Unknown operator '{op}'", node.line, node.col)
 
