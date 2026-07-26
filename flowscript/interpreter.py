@@ -41,9 +41,29 @@ class Interpreter:
     # ---------- binary / unary ----------
 
     def eval_BinaryOp(self, node: BinaryOp, env: Environment):
+        
+        op = node.operator
+
+        if op == "and":
+            left = self.evaluate(node.left, env)
+
+            if not bool(left):
+                return False
+
+            right = self.evaluate(node.right, env)
+            return bool(right)
+
+        if op == "or":
+            left = self.evaluate(node.left, env)
+
+            if bool(left):
+                return True
+
+            right = self.evaluate(node.right, env)
+            return bool(right)
+
         left = self.evaluate(node.left, env)
         right = self.evaluate(node.right, env)
-        op = node.operator
 
         if op == "+":
             if self.is_number(left) and self.is_number(right):
@@ -148,12 +168,7 @@ class Interpreter:
             )
 
 
-        if op == "and":
-            return bool(left) and bool(right)
-
-
-        if op == "or":
-            return bool(left) or bool(right)
+        
 
         raise FlowRuntimeError(f"Unknown operator '{op}'", node.line, node.col)
 
