@@ -4,6 +4,12 @@ from .ast_nodes import (
 )
 from .environment import Environment, FlowRuntimeError
 
+class ReturnSignal(Exception):
+    """Not an error — used to unwind the call stack back to a task call
+    when a `return` statement executes, carrying the returned value."""
+    def __init__(self, value):
+        self.value = value
+
 
 class Interpreter:
     def __init__(self):
@@ -24,6 +30,28 @@ class Interpreter:
             )
         return method(node, env)
 
+    def execute(self, stmt, env: Environment):
+        """Dispatch to the correct exec_* method based on statement type."""
+        method_name = f"exec_{type(stmt).__name__}"
+        method = getattr(self, method_name, None)
+
+        if method is None:
+            raise FlowRuntimeError(
+                f"No executor for statement type {type(stmt).__name__}",
+                getattr(stmt, "line", 0),
+                getattr(stmt, "col", 0),
+            )
+
+        method(stmt, env)
+
+    def execute_block(self, statements: list, env: Environment):
+        """Execute a list of statements in a given environment."""
+        for stmt in statements:
+            self.execute(stmt, env)    
+
+    def exec_LetStmt(self, stmt, env: Environment):
+        value = self.evaluate(stmt.value, env)
+        env.define(stmt.name, value)        
     # ---------- literals ----------
 
     def eval_NumberLiteral(self, node: NumberLiteral, env: Environment):
