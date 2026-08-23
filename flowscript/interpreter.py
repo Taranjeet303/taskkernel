@@ -18,40 +18,7 @@ class Interpreter:
     def is_number(self, value) -> bool:
         return isinstance(value, (int, float)) and not isinstance(value, bool)    
 
-    def evaluate(self, node, env: Environment):
-        """Dispatch to the correct eval_* method based on node type."""
-        method_name = f"eval_{type(node).__name__}"
-        method = getattr(self, method_name, None)
-        if method is None:
-            raise FlowRuntimeError(
-                f"No evaluator for node type {type(node).__name__}",
-                getattr(node, "line", 0),
-                getattr(node, "col", 0),
-            )
-        return method(node, env)
-
-    def execute(self, stmt, env: Environment):
-        """Dispatch to the correct exec_* method based on statement type."""
-        method_name = f"exec_{type(stmt).__name__}"
-        method = getattr(self, method_name, None)
-
-        if method is None:
-            raise FlowRuntimeError(
-                f"No executor for statement type {type(stmt).__name__}",
-                getattr(stmt, "line", 0),
-                getattr(stmt, "col", 0),
-            )
-
-        method(stmt, env)
-
-    def execute_block(self, statements: list, env: Environment):
-        """Execute a list of statements in a given environment."""
-        for stmt in statements:
-            self.execute(stmt, env)    
-
-    def exec_LetStmt(self, stmt, env: Environment):
-        value = self.evaluate(stmt.value, env)
-        env.define(stmt.name, value)        
+     
     # ---------- literals ----------
 
     def eval_NumberLiteral(self, node: NumberLiteral, env: Environment):
@@ -264,3 +231,73 @@ class Interpreter:
         statement execution (task bodies are statement lists) to exist first.
         """
         raise NotImplementedError("Call evaluation comes in Day 5")
+
+#---------------- statement execution -----------------------------
+   
+    
+    def execute(self, stmt, env: Environment):
+                """Dispatch to the correct exec_* method based on statement type."""
+                method_name = f"exec_{type(stmt).__name__}"
+                method = getattr(self, method_name, None)
+        
+                if method is None:
+                    raise FlowRuntimeError(
+                        f"No executor for statement type {type(stmt).__name__}",
+                        getattr(stmt, "line", 0),
+                        getattr(stmt, "col", 0),
+                    )
+        
+                method(stmt, env)
+    
+    def execute_block(self, statements: list, env: Environment):
+            """Execute a list of statements in a given environment."""
+            for stmt in statements:
+                self.execute(stmt, env)    
+    
+    def exec_LetStmt(self, stmt, env: Environment):
+            value = self.evaluate(stmt.value, env)
+            env.define(stmt.name, value)       
+
+    def exec_AssignStmt(self, stmt, env: Environment):
+        # Evaluate the right-hand side, then update the existing variable.
+        value = self.evaluate(stmt.value, env)
+        env.assign(stmt.target.name, value, stmt.line, stmt.col)        
+
+    def exec_IfStmt(self, stmt, env: Environment):
+        condition = self.evaluate(stmt.condition, env)
+
+        if bool(condition):
+            child_env = Environment(parent=env)
+            self.execute_block(stmt.then_branch, child_env)
+
+        elif stmt.else_branch is not None:
+            child_env = Environment(parent=env)
+            self.execute_block(stmt.else_branch, child_env) 
+
+    def exec_WhileStmt(self, stmt, env: Environment):
+        while bool(self.evaluate(stmt.condition, env)):
+            child_env = Environment(parent=env)
+            self.execute_block(stmt.body, child_env)
+
+
+    def exec_ForStmt(self, stmt, env: Environment):
+        iterable = self.evaluate(stmt.iterable, env)
+
+        if not isinstance(iterable, list):
+            raise FlowRuntimeError(
+                "For loop can only iterate over a list.",
+                stmt.line,
+                stmt.col,
+            )
+
+        for element in iterable:
+            child_env = Environment(parent=env)
+            child_env.define(stmt.variable, element)
+            self.execute_block(stmt.body, child_env)
+
+    def exec_ReturnStmt(self, stmt, env: Environment):
+        value = self.evaluate(stmt.value, env) if stmt.value is not None else None
+        raise ReturnSignal(value)        
+
+    def exec_ExprStmt(self, stmt, env: Environment):
+     self.evaluate(stmt.expression, env)
