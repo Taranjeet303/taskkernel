@@ -14,6 +14,7 @@ class ReturnSignal(Exception):
 class Interpreter:
     def __init__(self):
         self.globals = Environment()
+        self.tasks = {}
 
     def is_number(self, value) -> bool:
         return isinstance(value, (int, float)) and not isinstance(value, bool)    
@@ -188,6 +189,7 @@ class Interpreter:
             node.line,
             node.col,
     )
+  # ---------- collections / members ---------------
 
     def eval_MemberAccess(self, node: MemberAccess, env: Environment):
         base = self.evaluate(node.base, env)
@@ -223,15 +225,43 @@ class Interpreter:
             result[key] = self.evaluate(value, env)
 
         return result
-
+ # ------------------ calls ----------------
     def eval_Call(self, node: Call, env: Environment):
-        """
-        Leave this as a stub for now — raise NotImplementedError.
-        Function/task calls and built-ins are Day 5's job, since they need
-        statement execution (task bodies are statement lists) to exist first.
-        """
-        raise NotImplementedError("Call evaluation comes in Day 5")
+        name = node.callee.name
 
+        task = self.tasks.get(name)
+
+        if task is None:
+            raise FlowRuntimeError(
+                f"Undefined task '{name}'",
+                node.line,
+                node.col,
+            )
+
+        if len(node.arguments) != len(task.params):
+            raise FlowRuntimeError(
+                f"Task '{name}' expects {len(task.params)} argument(s), "
+                f"but got {len(node.arguments)}",
+                node.line,
+                node.col,
+            )
+
+        arguments = []
+
+        for argument in node.arguments:
+            arguments.append(self.evaluate(argument, env))
+
+        task_env = Environment(parent=self.globals)
+
+        for parameter, argument in zip(task.params, arguments):
+            task_env.define(parameter.name, argument)
+
+        try:
+            self.execute_block(task.body, task_env)
+        except ReturnSignal as r:
+            return r.value
+
+        return None
 #---------------- statement execution -----------------------------
    
     
