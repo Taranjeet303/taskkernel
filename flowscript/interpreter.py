@@ -350,27 +350,50 @@ class Interpreter:
  #------------------- flow execution----------------     
 
     def run(self, program):
-        """Run the first flow in the program."""
+        """Execute all flows in the program in order."""
+
         if not program.flows:
-            raise FlowRuntimeError("No flow found in program.", 0, 0)
+            raise FlowRuntimeError(
+                "No flow found in program.",
+                0,
+                0,
+            )
 
-        flow = program.flows[0]
+        for flow in program.flows:
 
-        # First register all tasks defined in this flow.
-        for item in flow.body:
-            if isinstance(item, TaskDef):
-                self.tasks[item.name] = item
+            # Tasks belong to the current flow.
+            self.tasks.clear()
 
-        # Then execute the flow's steps in order.
-        for item in flow.body:
-            if isinstance(item, StepDef):
-                try:
-                    step_env = Environment(parent=self.globals)
-                    self.execute_block(item.body, step_env)
+            # Register all tasks defined in this flow.
+            for item in flow.body:
+                if isinstance(item, TaskDef):
+                    self.tasks[item.name] = item
 
-                except FlowRuntimeError as error:
-                    if item.on_fail is not None:
-                        fail_env = Environment(parent=self.globals)
-                        self.execute_block(item.on_fail.body, fail_env)
-                    else:
-                        raise 
+            # Environment shared by the current flow.
+            flow_env = Environment(parent=self.globals)
+
+            # Execute everything in the flow in source order.
+            for item in flow.body:
+
+                # Task definitions are registered above,
+                # but are not executed as statements.
+                if isinstance(item, TaskDef):
+                    continue
+
+                # Steps get their own child scope.
+                if isinstance(item, StepDef):
+                    step_env = Environment(parent=flow_env)
+
+                    try:
+                        self.execute_block(item.body, step_env)
+
+                    except FlowRuntimeError:
+                        if item.on_fail is not None:
+                            fail_env = Environment(parent=flow_env)
+                            self.execute_block(item.on_fail.body, fail_env)
+                        else:
+                            raise
+
+                # Ordinary statements directly inside the flow.
+                else:
+                    self.execute(item, flow_env)

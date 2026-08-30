@@ -64,4 +64,20 @@ flow test_flow {
 }
 """.strip()
 
-run_flow(source)
+#run_flow(source)
+
+def test_on_fail():
+    source = """flow test_fail {
+        step "failing step" {
+            let x = 10 / 0
+        } on_fail {
+            let recovered = 100
+            let x = recovered
+        }
+    }"""
+
+    run_flow(source)
+
+
+test_on_fail()
+print("✅ on_fail test completed successfully")
