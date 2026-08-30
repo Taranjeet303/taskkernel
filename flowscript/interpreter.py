@@ -1,6 +1,7 @@
 from .ast_nodes import (
     NumberLiteral, StringLiteral, BooleanLiteral, Identifier,
     BinaryOp, UnaryOp, Call, MemberAccess, ListLiteral, RecordLiteral,
+    TaskDef, StepDef,
 )
 from .environment import Environment, FlowRuntimeError
 
@@ -18,6 +19,20 @@ class Interpreter:
 
     def is_number(self, value) -> bool:
         return isinstance(value, (int, float)) and not isinstance(value, bool)    
+
+    def evaluate(self, node, env: Environment):
+        """Dispatch to the correct eval_* method based on node type."""
+        method_name = f"eval_{type(node).__name__}"
+        method = getattr(self, method_name, None)
+
+        if method is None:
+            raise FlowRuntimeError(
+                f"No evaluator for node type {type(node).__name__}",
+                getattr(node, "line", 0),
+                getattr(node, "col", 0),
+            )
+
+        return method(node, env)
 
      
     # ---------- literals ----------
@@ -331,3 +346,31 @@ class Interpreter:
 
     def exec_ExprStmt(self, stmt, env: Environment):
      self.evaluate(stmt.expression, env)
+
+ #------------------- flow execution----------------     
+
+    def run(self, program):
+        """Run the first flow in the program."""
+        if not program.flows:
+            raise FlowRuntimeError("No flow found in program.", 0, 0)
+
+        flow = program.flows[0]
+
+        # First register all tasks defined in this flow.
+        for item in flow.body:
+            if isinstance(item, TaskDef):
+                self.tasks[item.name] = item
+
+        # Then execute the flow's steps in order.
+        for item in flow.body:
+            if isinstance(item, StepDef):
+                try:
+                    step_env = Environment(parent=self.globals)
+                    self.execute_block(item.body, step_env)
+
+                except FlowRuntimeError as error:
+                    if item.on_fail is not None:
+                        fail_env = Environment(parent=self.globals)
+                        self.execute_block(item.on_fail.body, fail_env)
+                    else:
+                        raise 
