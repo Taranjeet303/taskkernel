@@ -151,12 +151,17 @@ def builtin_retry(args, interpreter):
         "attempts": args[0],
     }
 
+def builtin_print(arguments, interpreter):
+    print(*arguments)
+    return None
 
 # -------------------------
 # Built-in Function Registry
 # -------------------------
 
 BUILTINS = {
+    # Output
+    "print": builtin_print,
     # HTTP
     "http_get": builtin_http_get,
     "http_post": builtin_http_post,

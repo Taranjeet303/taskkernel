@@ -1,0 +1,8 @@
+flow builtin_test {
+
+    step "Test HTTP GET" {
+        let response = http_get("https://example.com")
+        return response
+    }
+
+}

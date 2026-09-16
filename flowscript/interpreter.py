@@ -305,7 +305,7 @@ class Interpreter:
                         getattr(stmt, "col", 0),
                     )
         
-                method(stmt, env)
+                return method(stmt, env)
     
     def execute_block(self, statements: list, env: Environment):
             """Execute a list of statements in a given environment."""
@@ -359,6 +359,28 @@ class Interpreter:
 
     def exec_ExprStmt(self, stmt, env: Environment):
      self.evaluate(stmt.expression, env)
+
+    def exec_Program(self, node, env: Environment):
+        for flow in node.flows:
+            return self.execute(flow, env)
+        return None
+
+    def exec_FlowDef(self, node, env: Environment):
+        try:
+            for item in node.body:
+                if isinstance(item, TaskDef):
+                    self.tasks[item.name] = item
+
+                elif isinstance(item, StepDef):
+                    self.execute_block(item.body, env)
+
+                else:
+                    self.execute(item, env)
+
+        except ReturnSignal as r:
+            return r.value
+
+        return None
 
  #------------------- flow execution----------------     
 
