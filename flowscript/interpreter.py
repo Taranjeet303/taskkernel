@@ -4,6 +4,7 @@ from .ast_nodes import (
     TaskDef, StepDef,
 )
 from .environment import Environment, FlowRuntimeError
+from .builtins import BUILTINS
 
 class ReturnSignal(Exception):
     """Not an error — used to unwind the call stack back to a task call
@@ -244,6 +245,18 @@ class Interpreter:
     def eval_Call(self, node: Call, env: Environment):
         name = node.callee.name
 
+        # Check built-in functions first
+        builtin = BUILTINS.get(name)
+
+        if builtin is not None:
+            arguments = []
+
+            for argument in node.arguments:
+                arguments.append(self.evaluate(argument, env))
+
+            return builtin(arguments, self)
+
+          # Check user-defined tasks
         task = self.tasks.get(name)
 
         if task is None:
