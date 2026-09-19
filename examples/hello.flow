@@ -125,4 +125,15 @@ flow interpreter_tests {
         print((10 + 20) * 3)
         print(10 + 20 * 3)
     }
+   let x = 10
+
+task shadow_test() {
+    let x = 50
+    return x
+}
+
+step "Scope Test" {
+    print(shadow_test())
+    print(x)
+}
 }

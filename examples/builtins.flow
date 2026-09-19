@@ -1,8 +1,46 @@
-flow builtin_test {
+flow builtin_tests {
+    step "HTTP Methods" {
+    print("=== HTTP METHODS ===")
 
-    step "Test HTTP GET" {
-        let response = http_get("https://example.com")
-        return response
-    }
+    let post_result = http_post("https://example.com", {"name": "TaskKernel"})
+    print(post_result)
 
+    let put_result = http_put("https://example.com/1", {"status": "updated"})
+    print(put_result)
+
+    let patch_result = http_patch("https://example.com/1", {"status": "patched"})
+    print(patch_result)
+
+    let delete_result = http_delete("https://example.com/1")
+    print(delete_result)
+}
+
+    step "Database Methods" {
+    print("=== DATABASE METHODS ===")
+
+    let query_result = db_query("SELECT * FROM users")
+    print(query_result)
+
+    let insert_result = db_insert("users", {"name": "Alice"})
+    print(insert_result)
+
+    let update_result = db_update("users", {"id": 1}, {"name": "Bob"})
+    print(update_result)
+
+    let delete_result = db_delete("users", {"name": "Bob"})
+    print(delete_result)
+}
+step "Events" {
+    print("=== EVENTS ===")
+
+    let event_result = publish_event("user.created", {"user_id": 42})
+    print(event_result)
+}
+
+step "Notifications" {
+    print("=== NOTIFICATIONS ===")
+
+    let notification_result = notify("admin", "Something happened")
+    print(notification_result)
+}
 }

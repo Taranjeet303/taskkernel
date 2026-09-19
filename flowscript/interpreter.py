@@ -372,7 +372,14 @@ class Interpreter:
                     self.tasks[item.name] = item
 
                 elif isinstance(item, StepDef):
-                    self.execute_block(item.body, env)
+                    try:
+                        self.execute_block(item.body, env)
+
+                    except FlowRuntimeError:
+                        if item.on_fail is not None:
+                            self.execute_block(item.on_fail.body, env)
+                        else:
+                            raise
 
                 else:
                     self.execute(item, env)
@@ -381,7 +388,6 @@ class Interpreter:
             return r.value
 
         return None
-
  #------------------- flow execution----------------     
 
     def run(self, program):
