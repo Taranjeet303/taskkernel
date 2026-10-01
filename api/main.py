@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from api.routes.flow import router as flow_router
+
 from api.routes import scripts, executions
 
 
@@ -9,7 +9,7 @@ app = FastAPI(title="TaskKernel", version="1.0.0")
 def health_check():
     return {"status": "ok"}
 
-app.include_router(flow_router)
+
 
 app.include_router(
     scripts.router,
