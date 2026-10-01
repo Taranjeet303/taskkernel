@@ -57,7 +57,8 @@ class Script(Base):
     )
 
     executions: Mapped[list["Execution"]] = relationship(
-        back_populates="script"
+        back_populates="script",
+        cascade="all, delete-orphan"
     )
 
 
