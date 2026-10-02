@@ -28,3 +28,14 @@ class ExecutionResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+class ExecutionLogResponse(BaseModel):
+    id: UUID
+    execution_id: UUID
+    step: str
+    message: str
+    status: str
+    duration_ms: int | None
+    sequence: int
+
+    model_config = ConfigDict(from_attributes=True)

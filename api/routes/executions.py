@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from api.schemas import ExecutionResponse
+from api.schemas import ExecutionResponse, ExecutionLogResponse
 from db.session import get_db
 from models.models import Script, Execution, ExecutionStatus, ExecutionLog
 
@@ -163,3 +163,32 @@ def list_executions(
     )
 
     return executions    
+
+@router.get(
+    "/executions/{execution_id}/logs",
+    response_model=list[ExecutionLogResponse]
+)
+def get_execution_logs(
+    execution_id: UUID,
+    db: Session = Depends(get_db)
+):
+    execution = (
+        db.query(Execution)
+        .filter(Execution.id == execution_id)
+        .first()
+    )
+
+    if execution is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Execution not found"
+        )
+
+    logs = (
+        db.query(ExecutionLog)
+        .filter(ExecutionLog.execution_id == execution_id)
+        .order_by(ExecutionLog.sequence.asc())
+        .all()
+    )
+
+    return logs

@@ -6,6 +6,7 @@ from .ast_nodes import (
 from .environment import Environment, FlowRuntimeError
 from .builtins import BUILTINS
 from typing import Callable
+import time
 
 class ReturnSignal(Exception):
     """Not an error — used to unwind the call stack back to a task call
@@ -23,6 +24,7 @@ class Interpreter:
         self.globals = Environment()
         self.tasks = {}
         self.log_callback = log_callback
+        self.current_step = None
 
     def emit_log(self, event: dict):
         if self.log_callback:
@@ -433,17 +435,77 @@ class Interpreter:
 
                 # Steps get their own child scope.
                 if isinstance(item, StepDef):
-                    step_env = Environment(parent=flow_env)
+
+                    # Track which step is currently executing.
+                    self.current_step = item.label
+
+                    # Start timing the step.
+                    start_time = time.time()
 
                     try:
-                        self.execute_block(item.body, step_env)
+                        step_env = Environment(parent=flow_env)
 
-                    except FlowRuntimeError:
+                        self.execute_block(
+                            item.body,
+                            step_env
+                        )
+
+                        # Step completed successfully.
+                        duration_ms = int(
+                            (time.time() - start_time) * 1000
+                        )
+
+                        self.emit_log({
+                            "step": item.label,
+                            "message": "Step completed",
+                            "status": "success",
+                            "duration_ms": duration_ms,
+                        })
+
+                    except FlowRuntimeError as error:
+
+                        # Step failed.
+                        duration_ms = int(
+                            (time.time() - start_time) * 1000
+                        )
+
+                        self.emit_log({
+                            "step": item.label,
+                            "message": f"Step failed: {error.message}",
+                            "status": "failed",
+                            "duration_ms": duration_ms,
+                        })
+
+                        # Run on_fail if it exists.
                         if item.on_fail is not None:
+
+                            fail_start_time = time.time()
+
                             fail_env = Environment(parent=flow_env)
-                            self.execute_block(item.on_fail.body, fail_env)
+
+                            self.execute_block(
+                                item.on_fail.body,
+                                fail_env
+                            )
+
+                            # on_fail completed successfully.
+                            fail_duration_ms = int(
+                                (time.time() - fail_start_time) * 1000
+                            )
+
+                            self.emit_log({
+                                "step": item.label,
+                                "message": "on_fail handler completed",
+                                "status": "recovered",
+                                "duration_ms": fail_duration_ms,
+                            })
+
                         else:
                             raise
+
+                    finally:
+                        # No step is currently active after this block.
+                        self.current_step = None
 
                 # Ordinary statements directly inside the flow.
                 else:
