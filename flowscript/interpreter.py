@@ -5,6 +5,7 @@ from .ast_nodes import (
 )
 from .environment import Environment, FlowRuntimeError
 from .builtins import BUILTINS
+from typing import Callable
 
 class ReturnSignal(Exception):
     """Not an error — used to unwind the call stack back to a task call
@@ -14,9 +15,18 @@ class ReturnSignal(Exception):
 
 
 class Interpreter:
-    def __init__(self):
+    
+    def __init__(
+        self,
+        log_callback: Callable[[dict], None] | None = None
+    ):
         self.globals = Environment()
         self.tasks = {}
+        self.log_callback = log_callback
+
+    def emit_log(self, event: dict):
+        if self.log_callback:
+            self.log_callback(event)
 
     def is_number(self, value) -> bool:
         return isinstance(value, (int, float)) and not isinstance(value, bool)    

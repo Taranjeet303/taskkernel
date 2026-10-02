@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from api.schemas import ExecutionResponse
 from db.session import get_db
-from models.models import Script, Execution, ExecutionStatus
+from models.models import Script, Execution, ExecutionStatus, ExecutionLog
 
 from flowscript import lexer, parser, interpreter
 from flowscript.environment import FlowRuntimeError
@@ -14,6 +14,32 @@ from flowscript.parser import ParseError
 
 
 router = APIRouter()
+
+def make_log_callback(
+    db: Session,
+    execution_id: UUID
+):
+    sequence = 0
+
+    def callback(event: dict):
+        nonlocal sequence
+
+        sequence += 1
+
+        log_row = ExecutionLog(
+            execution_id=execution_id,
+            step=event["step"],
+            message=event["message"],
+            status=event["status"],
+            duration_ms=event.get("duration_ms"),
+            sequence=sequence,
+        )
+
+        db.add(log_row)
+        db.commit()
+
+    return callback
+
 
 @router.post("/scripts/{script_id}/run", response_model=ExecutionResponse)
 def run_script(
@@ -54,8 +80,15 @@ def run_script(
         # 5. Run the saved FlowScript
         tokens = lexer.Lexer(script.source).tokenize()
         program = parser.Parser(tokens).parse()
+        log_callback = make_log_callback(
+            db,
+            execution.id
+)
 
-        runtime = interpreter.Interpreter()
+        runtime = interpreter.Interpreter(
+            log_callback=log_callback
+        )
+
         runtime.run(program)
 
         # 6. Execution succeeded
