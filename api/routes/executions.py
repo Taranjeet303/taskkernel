@@ -25,19 +25,34 @@ def make_log_callback(
         nonlocal sequence
 
         sequence += 1
+  
 
         log_row = ExecutionLog(
             execution_id=execution_id,
-            step=event["step"],
-            message=event["message"],
-            status=event["status"],
+
+            step=event.get("step", ""),
+            event_type=event.get("type", "step"),
+            name=event.get("name"),
+
+            message=event.get("message", ""),
+            status=event.get("status", "success"),
+
+            line=event.get("line"),
+            col=event.get("col"),
+
+            args=event.get("args"),
+            result_summary=event.get("result_summary"),
+
             duration_ms=event.get("duration_ms"),
+
             sequence=sequence,
         )
-
+       
+        
         db.add(log_row)
         db.commit()
-
+       
+       
     return callback
 
 

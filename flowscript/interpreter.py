@@ -27,6 +27,7 @@ class Interpreter:
         self.current_step = None
 
     def emit_log(self, event: dict):
+        
         if self.log_callback:
             self.log_callback(event)
 
@@ -266,7 +267,65 @@ class Interpreter:
             for argument in node.arguments:
                 arguments.append(self.evaluate(argument, env))
 
-            return builtin(arguments, self)
+            start_time = time.time()
+
+            try:
+                result = builtin(arguments, self)
+
+                duration_ms = int(
+                    (time.time() - start_time) * 1000
+                )
+
+                details = self.build_builtin_log_details(
+                      name,
+                      arguments,
+                      result
+                    )
+
+                self.emit_log({
+                    "type": "builtin_call",
+                    "step": self.current_step or name,
+                    "name": name,
+                    "message": f"{name} completed",
+                    "status": "success",
+                    "line": node.line,
+                    "col": node.col,
+                    "args": details["args"],
+                    "result_summary": details["result_summary"],
+                    "duration_ms": duration_ms,
+                    "timestamp": time.time(),
+                })
+
+                return result
+
+            except FlowRuntimeError as error:
+
+                duration_ms = int(
+                    (time.time() - start_time) * 1000
+                )
+
+                details = self.build_builtin_log_details(
+                    name,
+                    arguments,
+                    None
+                )
+
+                self.emit_log({
+                    "type": "builtin_call",
+                    "step": self.current_step or name,
+                    "name": name,
+                    "message": f"{name} failed: {error.message}",
+                    "status": "failed",
+                    "line": node.line,
+                    "col": node.col,
+                    "args": details["args"],
+                    "result_summary": details["result_summary"],
+                    "duration_ms": duration_ms,
+                    "timestamp": time.time(),
+                })
+
+    
+                raise
 
           # Check user-defined tasks
         task = self.tasks.get(name)
@@ -456,11 +515,15 @@ class Interpreter:
                         )
 
                         self.emit_log({
+                            "type": "step",
                             "step": item.label,
                             "message": "Step completed",
                             "status": "success",
+                            "line": item.line,
+                            "col": item.col,
                             "duration_ms": duration_ms,
-                        })
+                            "timestamp": time.time(),
+})
 
                     except FlowRuntimeError as error:
 
@@ -470,11 +533,15 @@ class Interpreter:
                         )
 
                         self.emit_log({
+                            "type": "step",
                             "step": item.label,
                             "message": f"Step failed: {error.message}",
                             "status": "failed",
+                            "line": item.line,
+                            "col": item.col,
                             "duration_ms": duration_ms,
-                        })
+                            "timestamp": time.time(),
+})
 
                         # Run on_fail if it exists.
                         if item.on_fail is not None:
@@ -494,11 +561,15 @@ class Interpreter:
                             )
 
                             self.emit_log({
+                                "type": "step",
                                 "step": item.label,
                                 "message": "on_fail handler completed",
                                 "status": "recovered",
+                                "line": item.line,
+                                "col": item.col,
                                 "duration_ms": fail_duration_ms,
-                            })
+                                "timestamp": time.time(),
+})
 
                         else:
                             raise
@@ -510,3 +581,188 @@ class Interpreter:
                 # Ordinary statements directly inside the flow.
                 else:
                     self.execute(item, flow_env)
+
+    def build_builtin_log_details(self, name, arguments, result):
+        if name == "log":
+            return {
+                "args": {
+                    "message": arguments[0] if arguments else ""
+                },
+                "result_summary": {
+                    "operation": result.get("operation") if isinstance(result, dict) else None,
+                    "success": result.get("success") if isinstance(result, dict) else None,
+                },
+            }
+
+        if name == "print":
+            return {
+                "args": {
+                    "values": arguments
+                },
+                "result_summary": None,
+            }
+
+        if name in {
+            "http_get",
+            "http_post",
+            "http_put",
+            "http_patch",
+            "http_delete",
+        }:
+            return {
+                "args": {
+                    "url": arguments[0] if arguments else None,
+                    "method": result.get("method") if isinstance(result, dict) else None,
+                },
+                "result_summary": {
+                    "status": result.get("status") if isinstance(result, dict) else None,
+                    "response_size": self.get_response_size(result),
+                },
+            }
+
+        if name == "db_query":
+            return {
+                "args": {
+                    "query": arguments[0] if arguments else None,
+                },
+                "result_summary": {
+                    "success": result.get("success") if isinstance(result, dict) else None,
+                    "row_count": len(result.get("rows", []))
+                    if isinstance(result, dict)
+                    else 0,
+                },
+            }
+
+        if name == "db_insert":
+            return {
+                "args": {
+                    "table": arguments[0] if arguments else None,
+                    "record": arguments[1] if len(arguments) > 1 else None,
+                },
+                "result_summary": {
+                    "success": result.get("success") if isinstance(result, dict) else None,
+                    "operation": result.get("operation") if isinstance(result, dict) else None,
+                },
+            }
+
+        if name == "db_update":
+            return {
+                "args": {
+                    "table": arguments[0] if arguments else None,
+                    "record": arguments[1] if len(arguments) > 1 else None,
+                    "updates": arguments[2] if len(arguments) > 2 else None,
+                },
+                "result_summary": {
+                    "success": result.get("success") if isinstance(result, dict) else None,
+                    "operation": result.get("operation") if isinstance(result, dict) else None,
+                },
+            }
+
+        if name == "db_delete":
+            return {
+                "args": {
+                    "table": arguments[0] if arguments else None,
+                    "condition": arguments[1] if len(arguments) > 1 else None,
+                },
+                "result_summary": {
+                    "success": result.get("success") if isinstance(result, dict) else None,
+                    "operation": result.get("operation") if isinstance(result, dict) else None,
+                },
+            }
+
+        if name == "publish_event":
+            return {
+                "args": {
+                    "channel": arguments[0] if arguments else None,
+                    "message": arguments[1] if len(arguments) > 1 else None,
+                },
+                "result_summary": {
+                    "success": result.get("success") if isinstance(result, dict) else None,
+                    "operation": result.get("operation") if isinstance(result, dict) else None,
+                },
+            }
+
+        if name == "notify":
+            return {
+                "args": {
+                    "message": arguments[0] if arguments else None,
+                },
+                "result_summary": {
+                    "success": result.get("success") if isinstance(result, dict) else None,
+                    "operation": result.get("operation") if isinstance(result, dict) else None,
+                },
+            }
+
+        if name == "wait":
+            return {
+                "args": {
+                    "seconds": arguments[0] if arguments else None,
+                },
+                "result_summary": {
+                    "success": result.get("success") if isinstance(result, dict) else None,
+                    "seconds": result.get("seconds") if isinstance(result, dict) else None,
+                },
+            }
+
+        if name == "retry":
+            return {
+                "args": {
+                    "attempts": arguments[0] if arguments else None,
+                },
+                "result_summary": {
+                    "success": result.get("success") if isinstance(result, dict) else None,
+                    "attempts": result.get("attempts") if isinstance(result, dict) else None,
+                },
+            }
+
+        return {
+            "args": {
+                "values": arguments
+            },
+            "result_summary": {
+                "type": type(result).__name__
+            }
+        }
+
+    def get_response_size(self, result):
+        if not isinstance(result, dict):
+            return None
+
+        body = result.get("body")
+
+        if body is None:
+            return 0
+
+        return len(str(body))
+
+    def summarize_result(self, result):
+        if result is None:
+            return None
+
+        if isinstance(result, dict):
+            summary = {}
+
+            for key in (
+                "status_code",
+                "status",
+                "rows",
+                "row_count",
+                "affected_rows",
+                "response_size",
+            ):
+                if key in result:
+                    summary[key] = result[key]
+
+            return summary or {
+                "type": "dict"
+            }
+
+        if isinstance(result, list):
+            return {
+                "type": "list",
+                "count": len(result),
+            }
+
+        return {
+            "type": type(result).__name__
+        }

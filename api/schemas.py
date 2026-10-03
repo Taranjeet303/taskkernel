@@ -32,10 +32,23 @@ class ExecutionResponse(BaseModel):
 class ExecutionLogResponse(BaseModel):
     id: UUID
     execution_id: UUID
+
     step: str
+    event_type: str
+    name: str | None
+
     message: str
     status: str
+
+    line: int | None
+    col: int | None
+
+    args: dict | None
+    result_summary: dict | None
+
     duration_ms: int | None
+    timestamp: datetime
+
     sequence: int
 
     model_config = ConfigDict(from_attributes=True)

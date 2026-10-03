@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Enum as SQLEnum, ForeignKey, Integer, Text, String
+from sqlalchemy import DateTime, Enum as SQLEnum, ForeignKey, Integer, Text, String, JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -141,6 +141,16 @@ class ExecutionLog(Base):
         nullable=False
     )
 
+    event_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False
+    )
+
+    name: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True
+    )
+
     message: Mapped[str] = mapped_column(
         Text,
         nullable=False
@@ -151,9 +161,35 @@ class ExecutionLog(Base):
         nullable=False
     )
 
+    line: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True
+    )
+
+    col: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True
+    )
+
+    args: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True
+    )
+
+    result_summary: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True
+    )
+
     duration_ms: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True
+    )
+
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
     )
 
     sequence: Mapped[int] = mapped_column(
@@ -164,4 +200,3 @@ class ExecutionLog(Base):
     execution: Mapped["Execution"] = relationship(
         back_populates="logs"
     )
-    
