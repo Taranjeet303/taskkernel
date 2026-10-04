@@ -14,6 +14,7 @@ celery_app = Celery(
     "taskkernel",
     broker=REDIS_URL,
     backend=REDIS_URL,
+    include=["worker.tasks"],
 )
 
 celery_app.conf.update(
