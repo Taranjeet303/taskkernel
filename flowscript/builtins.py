@@ -1,57 +1,426 @@
-# flowscript/builtins.py
+import httpx
+import time
+from flowscript.interpreter import FlowRuntimeError
 
 
 # -------------------------
 # HTTP Operations
 # -------------------------
 
-def builtin_http_get(args, interpreter):
-    return {
-        "status": 200,
-        "body": {"fake": "response"},
-        "url": args[0],
-        "method": "GET",
-    }
+
+def builtin_http_get(args, interpreter, line=0, col=0):
+    if len(args) != 1:
+        raise FlowRuntimeError(
+            "http_get() expects exactly one argument: url",
+            line,
+            col,
+        )
+
+    url = args[0]
+
+    if not isinstance(url, str) or not url.strip():
+        raise FlowRuntimeError(
+            "http_get() url must be a non-empty string",
+            line,
+            col,
+        )
+
+    start_time = time.perf_counter()
+
+    try:
+        response = httpx.get(url, timeout=10)
+
+        duration_ms = round(
+            (time.perf_counter() - start_time) * 1000,
+            2,
+        )
+
+        try:
+            body = response.json()
+        except ValueError:
+            body = response.text
+
+        result = {
+            "status": response.status_code,
+            "body": body,
+            "url": str(response.url),
+            "method": "GET",
+        }
+
+        interpreter.emit_log({
+            "type": "builtin_call",
+            "name": "http_get",
+            "url": str(response.url),
+            "status": response.status_code,
+            "duration_ms": duration_ms,
+            "line": line,
+            "col": col,
+            "result_summary": {
+                "status": response.status_code,
+                "body_type": (
+                    "json" if isinstance(body, (dict, list))
+                    else "text"
+                ),
+            },
+        })
+
+        return result
+
+    except httpx.RequestError as e:
+        duration_ms = round(
+            (time.perf_counter() - start_time) * 1000,
+            2,
+        )
+
+        interpreter.emit_log({
+            "type": "builtin_call",
+            "name": "http_get",
+            "url": url,
+            "status": "error",
+            "duration_ms": duration_ms,
+            "line": line,
+            "col": col,
+            "message": str(e),
+        })
+
+        raise FlowRuntimeError(
+            f"HTTP request failed: {e}",
+            line,
+            col,
+        ) from e
 
 
-def builtin_http_post(args, interpreter):
-    return {
-        "status": 201,
-        "body": {"fake": "created"},
-        "url": args[0],
-        "method": "POST",
-        "request_body": args[1],
-    }
+
+def builtin_http_post(args, interpreter, line=0, col=0):
+    if len(args) != 2:
+        raise FlowRuntimeError(
+            "http_post() expects two arguments: url, body",
+            line,
+            col,
+        )
+
+    url, body = args
+
+    if not isinstance(url, str) or not url.strip():
+        raise FlowRuntimeError(
+            "http_post() url must be a non-empty string",
+            line,
+            col,
+        )
+
+    start_time = time.perf_counter()
+
+    try:
+        response = httpx.post(url, json=body, timeout=10)
+
+        duration_ms = round(
+            (time.perf_counter() - start_time) * 1000,
+            2,
+        )
+
+        try:
+            response_body = response.json()
+        except ValueError:
+            response_body = response.text
+
+        result = {
+            "status": response.status_code,
+            "body": response_body,
+            "url": str(response.url),
+            "method": "POST",
+        }
+
+        interpreter.emit_log({
+            "type": "builtin_call",
+            "name": "http_post",
+            "url": str(response.url),
+            "status": response.status_code,
+            "duration_ms": duration_ms,
+            "line": line,
+            "col": col,
+            "result_summary": {
+                "status": response.status_code,
+                "body_type": (
+                    "json"
+                    if isinstance(response_body, (dict, list))
+                    else "text"
+                ),
+            },
+        })
+
+        return result
+
+    except httpx.RequestError as e:
+        duration_ms = round(
+            (time.perf_counter() - start_time) * 1000,
+            2,
+        )
+
+        interpreter.emit_log({
+            "type": "builtin_call",
+            "name": "http_post",
+            "url": url,
+            "status": "error",
+            "duration_ms": duration_ms,
+            "line": line,
+            "col": col,
+            "message": str(e),
+        })
+
+        raise FlowRuntimeError(
+            f"HTTP POST request failed: {e}",
+            line,
+            col,
+        ) from e
 
 
-def builtin_http_put(args, interpreter):
-    return {
-        "status": 200,
-        "body": {"fake": "updated"},
-        "url": args[0],
-        "method": "PUT",
-        "request_body": args[1],
-    }
+def builtin_http_put(args, interpreter, line=0, col=0):
+    if len(args) != 2:
+        raise FlowRuntimeError(
+            "http_put() expects two arguments: url, body",
+            line,
+            col,
+        )
+
+    url, body = args
+
+    if not isinstance(url, str) or not url.strip():
+        raise FlowRuntimeError(
+            "http_put() url must be a non-empty string",
+            line,
+            col,
+        )
+
+    start_time = time.perf_counter()
+
+    try:
+        response = httpx.put(url, json=body, timeout=10)
+
+        duration_ms = round(
+            (time.perf_counter() - start_time) * 1000,
+            2,
+        )
+
+        try:
+            response_body = response.json()
+        except ValueError:
+            response_body = response.text
+
+        result = {
+            "status": response.status_code,
+            "body": response_body,
+            "url": str(response.url),
+            "method": "PUT",
+        }
+
+        interpreter.emit_log({
+            "type": "builtin_call",
+            "name": "http_put",
+            "url": str(response.url),
+            "status": response.status_code,
+            "duration_ms": duration_ms,
+            "line": line,
+            "col": col,
+            "result_summary": {
+                "status": response.status_code,
+                "body_type": (
+                    "json"
+                    if isinstance(response_body, (dict, list))
+                    else "text"
+                ),
+            },
+        })
+
+        return result
+
+    except httpx.RequestError as e:
+        duration_ms = round(
+            (time.perf_counter() - start_time) * 1000,
+            2,
+        )
+
+        interpreter.emit_log({
+            "type": "builtin_call",
+            "name": "http_put",
+            "url": url,
+            "status": "error",
+            "duration_ms": duration_ms,
+            "line": line,
+            "col": col,
+            "message": str(e),
+        })
+
+        raise FlowRuntimeError(
+            f"HTTP PUT request failed: {e}",
+            line,
+            col,
+        ) from e
 
 
-def builtin_http_patch(args, interpreter):
-    return {
-        "status": 200,
-        "body": {"fake": "patched"},
-        "url": args[0],
-        "method": "PATCH",
-        "request_body": args[1],
-    }
+def builtin_http_patch(args, interpreter, line=0, col=0):
+    if len(args) != 2:
+        raise FlowRuntimeError(
+            "http_patch() expects two arguments: url, body",
+            line,
+            col,
+        )
+
+    url, body = args
+
+    if not isinstance(url, str) or not url.strip():
+        raise FlowRuntimeError(
+            "http_patch() url must be a non-empty string",
+            line,
+            col,
+        )
+
+    start_time = time.perf_counter()
+
+    try:
+        response = httpx.patch(url, json=body, timeout=10)
+
+        duration_ms = round(
+            (time.perf_counter() - start_time) * 1000,
+            2,
+        )
+
+        try:
+            response_body = response.json()
+        except ValueError:
+            response_body = response.text
+
+        result = {
+            "status": response.status_code,
+            "body": response_body,
+            "url": str(response.url),
+            "method": "PATCH",
+        }
+
+        interpreter.emit_log({
+            "type": "builtin_call",
+            "name": "http_patch",
+            "url": str(response.url),
+            "status": response.status_code,
+            "duration_ms": duration_ms,
+            "line": line,
+            "col": col,
+            "result_summary": {
+                "status": response.status_code,
+                "body_type": (
+                    "json"
+                    if isinstance(response_body, (dict, list))
+                    else "text"
+                ),
+            },
+        })
+
+        return result
+
+    except httpx.RequestError as e:
+        duration_ms = round(
+            (time.perf_counter() - start_time) * 1000,
+            2,
+        )
+
+        interpreter.emit_log({
+            "type": "builtin_call",
+            "name": "http_patch",
+            "url": url,
+            "status": "error",
+            "duration_ms": duration_ms,
+            "line": line,
+            "col": col,
+            "message": str(e),
+        })
+
+        raise FlowRuntimeError(
+            f"HTTP PATCH request failed: {e}",
+            line,
+            col,
+        ) from e
 
 
-def builtin_http_delete(args, interpreter):
-    return {
-        "status": 204,
-        "body": None,
-        "url": args[0],
-        "method": "DELETE",
-    }
+def builtin_http_delete(args, interpreter, line=0, col=0):
+    if len(args) != 1:
+        raise FlowRuntimeError(
+            "http_delete() expects exactly one argument: url",
+            line,
+            col,
+        )
 
+    url = args[0]
+
+    if not isinstance(url, str) or not url.strip():
+        raise FlowRuntimeError(
+            "http_delete() url must be a non-empty string",
+            line,
+            col,
+        )
+
+    start_time = time.perf_counter()
+
+    try:
+        response = httpx.delete(url, timeout=10)
+
+        duration_ms = round(
+            (time.perf_counter() - start_time) * 1000,
+            2,
+        )
+
+        try:
+            response_body = response.json()
+        except ValueError:
+            response_body = response.text
+
+        result = {
+            "status": response.status_code,
+            "body": response_body,
+            "url": str(response.url),
+            "method": "DELETE",
+        }
+
+        interpreter.emit_log({
+            "type": "builtin_call",
+            "name": "http_delete",
+            "url": str(response.url),
+            "status": response.status_code,
+            "duration_ms": duration_ms,
+            "line": line,
+            "col": col,
+            "result_summary": {
+                "status": response.status_code,
+                "body_type": (
+                    "json"
+                    if isinstance(response_body, (dict, list))
+                    else "text"
+                ),
+            },
+        })
+
+        return result
+
+    except httpx.RequestError as e:
+        duration_ms = round(
+            (time.perf_counter() - start_time) * 1000,
+            2,
+        )
+
+        interpreter.emit_log({
+            "type": "builtin_call",
+            "name": "http_delete",
+            "url": url,
+            "status": "error",
+            "duration_ms": duration_ms,
+            "line": line,
+            "col": col,
+            "message": str(e),
+        })
+
+        raise FlowRuntimeError(
+            f"HTTP DELETE request failed: {e}",
+            line,
+            col,
+        ) from e
 
 # -------------------------
 # Database Operations
