@@ -2,6 +2,55 @@ import httpx
 import time
 from flowscript.interpreter import FlowRuntimeError
 
+import os
+from sqlalchemy import (
+    create_engine,
+    MetaData,
+    Table,
+    inspect,
+    text,
+    and_,
+)
+
+from sqlalchemy.exc import SQLAlchemyError, NoSuchTableError
+
+# -------------------------
+# Workflow Database Connection
+# -------------------------
+
+class DatabaseConnectionManager:
+
+    def __init__(self):
+        self._engine = None
+
+    def get_engine(self):
+
+        if self._engine is not None:
+            return self._engine
+
+        database_url = os.getenv("WORKFLOW_DB_URL")
+
+        if not database_url:
+            raise RuntimeError(
+                "Workflow database is not configured. "
+                "Set WORKFLOW_DB_URL in your .env file."
+            )
+
+        self._engine = create_engine(
+            database_url,
+            pool_pre_ping=True,
+        )
+
+        return self._engine
+
+    def close(self):
+
+        if self._engine is not None:
+            self._engine.dispose()
+            self._engine = None
+
+
+database_manager = DatabaseConnectionManager()
 
 # -------------------------
 # HTTP Operations
@@ -422,16 +471,129 @@ def builtin_http_delete(args, interpreter, line=0, col=0):
             col,
         ) from e
 
+
+# -------------------------
+# Database Helper Functions
+# -------------------------
+
+def get_workflow_connection():
+    engine = database_manager.get_engine()
+    return engine.connect()
+
+
+def get_workflow_table(connection, table_name):
+
+    if not isinstance(table_name, str) or not table_name.strip():
+        raise ValueError("Table name must be a non-empty string.")
+
+    metadata = MetaData()
+
+    table = Table(
+        table_name,
+        metadata,
+        autoload_with=connection,
+    )
+
+    return table
+
+
+def validate_record(record):
+
+    if not isinstance(record, dict) or not record:
+        raise ValueError("Record must be a non-empty dictionary.")
+
+    return record
+
+
+def validate_conditions(conditions):
+
+    if not isinstance(conditions, dict) or not conditions:
+        raise ValueError("Conditions must be a non-empty dictionary.")
+
+    return conditions    
+
 # -------------------------
 # Database Operations
 # -------------------------
 
 def builtin_db_query(args, interpreter):
-    return {
-        "success": True,
-        "query": args[0],
-        "rows": [],
-    }
+
+    # Step 1: Validate arguments
+    if len(args) != 1:
+        raise FlowRuntimeError(
+            "db_query() expects exactly one argument: query"
+        )
+
+    query = args[0]
+
+    if not isinstance(query, str) or not query.strip():
+        raise FlowRuntimeError(
+            "db_query() query must be a non-empty string"
+        )
+
+    # Step 2: Start measuring execution time
+    start_time = time.perf_counter()
+
+    try:
+
+        # Step 3: Get the workflow database connection
+        with get_workflow_connection() as connection:
+
+            # Step 4: Execute the SQL query
+            result = connection.execute(text(query))
+
+            # Step 5: Convert database rows into dictionaries
+            if not result.returns_rows:
+                raise FlowRuntimeError(
+                    "db_query() expects a query that returns rows."
+                )
+
+            rows = [
+                dict(row._mapping)
+                for row in result.fetchall()
+            ]
+
+        # Step 6: Calculate execution time
+        duration_ms = round(
+            (time.perf_counter() - start_time) * 1000,
+            2,
+        )
+
+        # Step 7: Record successful execution
+        interpreter.emit_log({
+            "type": "builtin_call",
+            "name": "db_query",
+            "status": "success",
+            "row_count": len(rows),
+            "duration_ms": duration_ms,
+        })
+
+        # Step 8: Return the result to FlowScript
+        return {
+            "success": True,
+            "query": query,
+            "rows": rows,
+            "row_count": len(rows),
+        }
+
+    except SQLAlchemyError as e:
+
+        duration_ms = round(
+            (time.perf_counter() - start_time) * 1000,
+            2,
+        )
+
+        interpreter.emit_log({
+            "type": "builtin_call",
+            "name": "db_query",
+            "status": "error",
+            "duration_ms": duration_ms,
+            "message": str(e),
+        })
+
+        raise FlowRuntimeError(
+            f"Database query failed: {e}"
+        ) from e
 
 
 def builtin_db_insert(args, interpreter):
