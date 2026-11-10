@@ -3,7 +3,8 @@ from .ast_nodes import (
     BinaryOp, UnaryOp, Call, MemberAccess, ListLiteral, RecordLiteral,
     TaskDef, StepDef,
 )
-from .environment import Environment, FlowRuntimeError
+from .environment import Environment
+from .errors import FlowRuntimeError
 from .builtins import BUILTINS
 from typing import Callable
 import time

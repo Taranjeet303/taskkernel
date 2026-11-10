@@ -1,6 +1,6 @@
 import httpx
 import time
-from flowscript.interpreter import FlowRuntimeError
+from .errors import FlowRuntimeError
 
 import os
 from sqlalchemy import (

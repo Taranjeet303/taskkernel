@@ -12,7 +12,7 @@ from models.models import (
 )
 
 from flowscript import lexer, parser, interpreter
-from flowscript.environment import FlowRuntimeError
+from flowscript.errors import FlowRuntimeError
 from flowscript.parser import ParseError
 
 
