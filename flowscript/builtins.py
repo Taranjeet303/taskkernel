@@ -481,20 +481,28 @@ def get_workflow_connection():
     return engine.connect()
 
 
-def get_workflow_table(connection, table_name):
-
+def get_workflow_table(connection, table_name, line=0, col=0):
     if not isinstance(table_name, str) or not table_name.strip():
-        raise ValueError("Table name must be a non-empty string.")
+        raise FlowRuntimeError(
+            "Table name must be a non-empty string.",
+            line,
+            col,
+        )
 
     metadata = MetaData()
 
-    table = Table(
-        table_name,
-        metadata,
-        autoload_with=connection,
-    )
-
-    return table
+    try:
+        return Table(
+            table_name,
+            metadata,
+            autoload_with=connection,
+        )
+    except NoSuchTableError:
+        raise FlowRuntimeError(
+            f"Table '{table_name}' does not exist.",
+            line,
+            col,
+        )
 
 
 def validate_record(record):
@@ -512,40 +520,50 @@ def validate_conditions(conditions):
 
     return conditions    
 
+def validate_table_fields(table, data, line, col):
+    invalid_fields = set(data.keys()) - set(table.c.keys())
+
+    if invalid_fields:
+        raise FlowRuntimeError(
+            f"Unknown column(s): {', '.join(invalid_fields)}",
+            line,
+            col,
+        )
+
 # -------------------------
 # Database Operations
 # -------------------------
 
-def builtin_db_query(args, interpreter):
 
-    # Step 1: Validate arguments
+def builtin_db_query(args, interpreter, line=0, col=0):
+
     if len(args) != 1:
         raise FlowRuntimeError(
-            "db_query() expects exactly one argument: query"
+            "db_query() expects exactly one argument: query",
+            line,
+            col,
         )
 
     query = args[0]
 
     if not isinstance(query, str) or not query.strip():
         raise FlowRuntimeError(
-            "db_query() query must be a non-empty string"
+            "db_query() query must be a non-empty string",
+            line,
+            col,
         )
 
-    # Step 2: Start measuring execution time
     start_time = time.perf_counter()
 
     try:
-
-        # Step 3: Get the workflow database connection
         with get_workflow_connection() as connection:
-
-            # Step 4: Execute the SQL query
             result = connection.execute(text(query))
 
-            # Step 5: Convert database rows into dictionaries
             if not result.returns_rows:
                 raise FlowRuntimeError(
-                    "db_query() expects a query that returns rows."
+                    "db_query() expects a query that returns rows.",
+                    line,
+                    col,
                 )
 
             rows = [
@@ -553,22 +571,6 @@ def builtin_db_query(args, interpreter):
                 for row in result.fetchall()
             ]
 
-        # Step 6: Calculate execution time
-        duration_ms = round(
-            (time.perf_counter() - start_time) * 1000,
-            2,
-        )
-
-        # Step 7: Record successful execution
-        interpreter.emit_log({
-            "type": "builtin_call",
-            "name": "db_query",
-            "status": "success",
-            "row_count": len(rows),
-            "duration_ms": duration_ms,
-        })
-
-        # Step 8: Return the result to FlowScript
         return {
             "success": True,
             "query": query,
@@ -577,51 +579,156 @@ def builtin_db_query(args, interpreter):
         }
 
     except SQLAlchemyError as e:
-
-        duration_ms = round(
-            (time.perf_counter() - start_time) * 1000,
-            2,
-        )
-
-        interpreter.emit_log({
-            "type": "builtin_call",
-            "name": "db_query",
-            "status": "error",
-            "duration_ms": duration_ms,
-            "message": str(e),
-        })
-
         raise FlowRuntimeError(
-            f"Database query failed: {e}"
+            f"Database query failed: {e}",
+            line,
+            col,
         ) from e
 
 
-def builtin_db_insert(args, interpreter):
-    return {
-        "success": True,
-        "operation": "insert",
-        "table": args[0],
-        "record": args[1],
-    }
+def builtin_db_insert(args, interpreter, line=0, col=0):
+
+    if len(args) != 2:
+        raise FlowRuntimeError(
+            "db_insert() expects two arguments: table and record",
+            line, col,
+        )
+
+    table_name, record = args
+
+    try:
+        validate_record(record)
+
+        with database_manager.get_engine().begin() as connection:
+            table = get_workflow_table(connection, table_name, line, col)
+            validate_table_fields(table, record, line, col)
+
+            result = connection.execute(
+                table.insert().values(**record)
+            )
+
+            inserted_id = (
+                list(result.inserted_primary_key)
+                if result.inserted_primary_key
+                else None
+            )
+
+        return {
+            "success": True,
+            "operation": "insert",
+            "table": table_name,
+            "record": record,
+            "inserted_id": inserted_id,
+            "row_count": 1,
+        }
+
+    except FlowRuntimeError:
+        raise
+
+    except (ValueError, SQLAlchemyError) as e:
+        raise FlowRuntimeError(
+            f"Database insert failed: {e}", line, col
+        ) from e
 
 
-def builtin_db_update(args, interpreter):
-    return {
-        "success": True,
-        "operation": "update",
-        "table": args[0],
-        "record": args[1],
-        "updates": args[2],
-    }
+def builtin_db_update(args, interpreter, line=0, col=0):
+
+    if len(args) != 3:
+        raise FlowRuntimeError(
+            "db_update() expects three arguments: table, conditions, updates",
+            line, col,
+        )
+
+    table_name, conditions, updates = args
+
+    try:
+        validate_conditions(conditions)
+        validate_record(updates)
+
+        with database_manager.get_engine().begin() as connection:
+            table = get_workflow_table(connection, table_name, line, col)
+            validate_table_fields(table, conditions, line, col)
+            validate_table_fields(table, updates, line, col)
+
+            where_clause = and_(
+                *[
+                    table.c[key] == value
+                    for key, value in conditions.items()
+                ]
+            )
+
+            result = connection.execute(
+                table.update()
+                .where(where_clause)
+                .values(**updates)
+            )
+
+            affected_rows = result.rowcount
+
+        return {
+            "success": True,
+            "operation": "update",
+            "table": table_name,
+            "conditions": conditions,
+            "updates": updates,
+            "row_count": affected_rows,
+        }
+
+    except FlowRuntimeError:
+        raise
+
+    except (ValueError, SQLAlchemyError) as e:
+        raise FlowRuntimeError(
+            f"Database update failed: {e}", line, col
+        ) from e
 
 
-def builtin_db_delete(args, interpreter):
-    return {
-        "success": True,
-        "operation": "delete",
-        "table": args[0],
-        "condition": args[1],
-    }
+def builtin_db_delete(args, interpreter, line=0, col=0):
+
+    if len(args) != 2:
+        raise FlowRuntimeError(
+            "db_delete() expects two arguments: table and conditions",
+            line, col,
+        )
+
+    table_name, conditions = args
+
+    try:
+        validate_conditions(conditions)
+
+        with database_manager.get_engine().begin() as connection:
+            table = get_workflow_table(connection, table_name, line, col)
+            validate_table_fields(table, conditions, line, col)
+
+            where_clause = and_(
+                *[
+                    table.c[key] == value
+                    for key, value in conditions.items()
+                ]
+            )
+
+            result = connection.execute(
+                table.delete().where(where_clause)
+            )
+
+            affected_rows = result.rowcount
+
+        return {
+            "success": True,
+            "operation": "delete",
+            "table": table_name,
+            "conditions": conditions,
+            "row_count": affected_rows,
+        }
+
+    except FlowRuntimeError:
+        raise
+
+    except (ValueError, SQLAlchemyError) as e:
+        raise FlowRuntimeError(
+            f"Database delete failed: {e}", line, col
+        ) from e
+
 
 
 # -------------------------
@@ -682,8 +789,8 @@ def builtin_retry(args, interpreter):
         "attempts": args[0],
     }
 
-def builtin_print(arguments, interpreter):
-    print(*arguments)
+def builtin_print(args, interpreter, line=0, col=0):
+    print(*args)
     return None
 
 # -------------------------

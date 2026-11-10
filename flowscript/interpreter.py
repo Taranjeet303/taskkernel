@@ -271,7 +271,7 @@ class Interpreter:
             start_time = time.time()
 
             try:
-                result = builtin(arguments, self)
+                result = builtin(arguments, self, node.line, node.col)
 
                 duration_ms = int(
                     (time.time() - start_time) * 1000

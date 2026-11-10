@@ -5,6 +5,9 @@ from flowscript.parser import Parser
 from flowscript.interpreter import Interpreter
 from flowscript.environment import Environment
 
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def main():
     if len(sys.argv) != 2:

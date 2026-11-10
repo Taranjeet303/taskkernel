@@ -1,0 +1,19 @@
+flow database_test {
+    db_insert("customers", {
+        "name": "Alice",
+        "city": "Mumbai",
+        "email": "alice@example.com"
+    })
+
+    db_update("customers", {"id": 2}, {"city": "Bangalore"})
+
+    db_delete("customers", {"id": 3})
+
+    let result = db_query("SELECT * FROM customers")
+    print(result)
+
+    db_insert("unknown_table", {
+    "name": "Test"
+})
+db_insert("customers", {"unknown_column": "Test"})
+}
