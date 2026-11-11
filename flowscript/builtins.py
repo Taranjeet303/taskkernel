@@ -735,7 +735,7 @@ def builtin_db_delete(args, interpreter, line=0, col=0):
 # Event Operations
 # -------------------------
 
-def builtin_publish_event(args, interpreter):
+def builtin_publish_event(args, interpreter, line=0, col=0):
     return {
         "success": True,
         "operation": "publish_event",
@@ -748,7 +748,7 @@ def builtin_publish_event(args, interpreter):
 # Notification Operations
 # -------------------------
 
-def builtin_notify(args, interpreter):
+def builtin_notify(args, interpreter, line=0, col=0):
     return {
         "success": True,
         "operation": "notify",
@@ -760,7 +760,7 @@ def builtin_notify(args, interpreter):
 # Runtime Operations
 # -------------------------
 
-def builtin_log(args, interpreter):
+def builtin_log(args, interpreter, line=0, col=0):
     print(f"[LOG] {args[0]}")
 
     return {
@@ -770,7 +770,7 @@ def builtin_log(args, interpreter):
     }
 
 
-def builtin_wait(args, interpreter):
+def builtin_wait(args, interpreter, line=0, col=0):
     import time
 
     time.sleep(args[0])
@@ -782,7 +782,7 @@ def builtin_wait(args, interpreter):
     }
 
 
-def builtin_retry(args, interpreter):
+def builtin_retry(args, interpreter, line=0, col=0):
     return {
         "success": True,
         "operation": "retry",
