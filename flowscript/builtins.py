@@ -14,6 +14,9 @@ from sqlalchemy import (
 
 from sqlalchemy.exc import SQLAlchemyError, NoSuchTableError
 
+import json
+import redis
+
 # -------------------------
 # Workflow Database Connection
 # -------------------------
@@ -51,6 +54,15 @@ class DatabaseConnectionManager:
 
 
 database_manager = DatabaseConnectionManager()
+# ------REDIS CONNECTION------------
+redis_url = os.getenv("REDIS_URL")
+
+if not redis_url:
+    raise RuntimeError(
+        "Redis is not configured. Set REDIS_URL in your .env file."
+    )
+
+redis_client = redis.Redis.from_url(redis_url)
 
 # -------------------------
 # HTTP Operations
@@ -736,11 +748,46 @@ def builtin_db_delete(args, interpreter, line=0, col=0):
 # -------------------------
 
 def builtin_publish_event(args, interpreter, line=0, col=0):
+    if len(args) != 2:
+        raise FlowRuntimeError(
+            "publish_event() expects 2 arguments: channel and message",
+            line,
+            col
+        )
+
+    channel, message = args
+
+    if not isinstance(channel, str) or not channel.strip():
+        raise FlowRuntimeError(
+            "Event channel must be a non-empty string",
+            line,
+            col
+        )
+
+    try:
+        serialized_message = json.dumps(message)
+    except (TypeError, ValueError) as e:
+        raise FlowRuntimeError(
+            f"Event message must be JSON serializable: {e}",
+            line,
+            col
+        )
+
+    try:
+        receiver_count = redis_client.publish(channel, serialized_message)
+    except redis.RedisError as e:
+        raise FlowRuntimeError(
+            f"Failed to publish event: {e}",
+            line,
+            col
+        )
+
     return {
         "success": True,
         "operation": "publish_event",
-        "channel": args[0],
-        "message": args[1],
+        "channel": channel,
+        "receiver_count": receiver_count,
+        "message": message
     }
 
 
