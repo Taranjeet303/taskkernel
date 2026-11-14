@@ -754,8 +754,10 @@ class Interpreter:
                     "seconds": arguments[0] if arguments else None,
                 },
                 "result_summary": {
-                    "success": result.get("success") if isinstance(result, dict) else None,
-                    "seconds": result.get("seconds") if isinstance(result, dict) else None,
+                    "success": result.get("success")
+                    if isinstance(result, dict) else None,
+                    "seconds": result.get("seconds")
+                    if isinstance(result, dict) else None,
                 },
             }
 

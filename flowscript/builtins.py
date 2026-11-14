@@ -927,16 +927,66 @@ def builtin_log(args, interpreter, line=0, col=0):
 
 
 
+
 def builtin_wait(args, interpreter, line=0, col=0):
     import time
+    import math
 
-    time.sleep(args[0])
+    if len(args) != 1:
+        raise FlowRuntimeError(
+            "wait() expects exactly one argument.",
+            line,
+            col
+        )
+
+    seconds = args[0]
+
+    # Validate numeric input (bool is a subclass of int).
+    if (
+        not isinstance(seconds, (int, float))
+        or isinstance(seconds, bool)
+    ):
+        raise FlowRuntimeError(
+            "wait() expects a numeric number of seconds.",
+            line,
+            col
+        )
+
+    # Reject NaN and infinity.
+    if not math.isfinite(seconds):
+        raise FlowRuntimeError(
+            "wait() expects a finite number of seconds.",
+            line,
+            col
+        )
+
+    if seconds < 0:
+        raise FlowRuntimeError(
+            "Wait duration cannot be negative.",
+            line,
+            col
+        )
+
+    if seconds > 300:
+        raise FlowRuntimeError(
+            "Maximum wait duration is 300 seconds.",
+            line,
+            col
+        )
+
+    start_time = time.time()
+
+    time.sleep(seconds)
+
+    duration_ms = int((time.time() - start_time) * 1000)
 
     return {
         "success": True,
         "operation": "wait",
-        "seconds": args[0],
+        "seconds": seconds,
+        "duration_ms": duration_ms
     }
+
 
 
 

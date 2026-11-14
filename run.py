@@ -26,10 +26,7 @@ def main():
     parser = Parser(tokens)
     program = parser.parse()
 
-    def log_callback(event):
-        print("[LOG EVENT]", event)
-
-    interpreter = Interpreter(log_callback=log_callback)
+    interpreter = Interpreter()
     env = Environment()
     result = interpreter.run(program)
     

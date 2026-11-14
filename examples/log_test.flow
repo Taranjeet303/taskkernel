@@ -1,0 +1,25 @@
+flow wait_test {
+
+    step "Basic Wait" {
+        log("Starting wait test")
+
+        wait(3)
+
+        log("Three seconds completed")
+    }
+
+    step "Fractional Wait" {
+        log("Starting fractional wait")
+
+        wait(1.5)
+
+        log("Fractional wait completed")
+    }
+
+    step "Zero Wait" {
+        wait(0)
+
+        log("Zero wait completed immediately")
+    }
+
+}
