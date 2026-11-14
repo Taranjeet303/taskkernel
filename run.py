@@ -2,12 +2,13 @@ import sys
 
 from flowscript.lexer import Lexer
 from flowscript.parser import Parser
-from flowscript.interpreter import Interpreter
-from flowscript.environment import Environment
-
 from dotenv import load_dotenv
 
 load_dotenv()
+from flowscript.interpreter import Interpreter
+from flowscript.environment import Environment
+
+
 
 def main():
     if len(sys.argv) != 2:

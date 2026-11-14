@@ -796,11 +796,75 @@ def builtin_publish_event(args, interpreter, line=0, col=0):
 # -------------------------
 
 def builtin_notify(args, interpreter, line=0, col=0):
-    return {
-        "success": True,
-        "operation": "notify",
-        "message": args[0],
-    }
+
+    if len(args) != 1:
+        raise FlowRuntimeError(
+            "notify() expects exactly one argument: message",
+            line,
+            col,
+        )
+
+    message = args[0]
+
+    if not isinstance(message, str) or not message.strip():
+        raise FlowRuntimeError(
+            "notify() message must be a non-empty string",
+            line,
+            col,
+        )
+
+    slack_url = os.getenv("SLACK_WEBHOOK_URL")
+    discord_url = os.getenv("DISCORD_WEBHOOK_URL")
+
+    destinations = {}
+
+    if slack_url:
+        destinations["slack"] = {
+            "url": slack_url,
+            "payload": {"text": message},
+        }
+
+    if discord_url:
+        destinations["discord"] = {
+            "url": discord_url,
+            "payload": {"content": message},
+        }
+
+    if not destinations:
+        raise FlowRuntimeError(
+            "No notification webhook configured. "
+            "Set SLACK_WEBHOOK_URL or DISCORD_WEBHOOK_URL.",
+            line,
+            col,
+        )
+
+    failed_providers = []
+
+    for provider, config in destinations.items():
+
+        try:
+            response = httpx.post(
+                config["url"],
+                json=config["payload"],
+                timeout=10,
+            )
+
+            response.raise_for_status()
+
+        except httpx.RequestError:
+            failed_providers.append(provider)
+
+        except httpx.HTTPStatusError:
+            failed_providers.append(provider)
+
+    if failed_providers:
+        raise FlowRuntimeError(
+            f"Notification failed for: {', '.join(failed_providers)}",
+            line,
+            col,
+        )
+
+    return None
 
 
 # -------------------------

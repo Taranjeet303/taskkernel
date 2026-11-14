@@ -1,0 +1,3 @@
+flow notification_test {
+    notify("Hello! TaskKernel notification test successful.")
+}
