@@ -1,0 +1,10 @@
+flow retry_test {
+
+    step "Invalid Retry Test" {
+        unknown_operation()
+    } on_fail {
+        retry(-1)
+        print("This should not execute")
+    }
+
+}

@@ -1,7 +1,6 @@
 import httpx
 import time
-from .errors import FlowRuntimeError
-
+from .errors import FlowRuntimeError, RetrySignal
 import os
 from sqlalchemy import (
     create_engine,
@@ -893,12 +892,50 @@ def builtin_wait(args, interpreter, line=0, col=0):
     }
 
 
+
 def builtin_retry(args, interpreter, line=0, col=0):
-    return {
-        "success": True,
-        "operation": "retry",
-        "attempts": args[0],
-    }
+
+    # Validate argument count.
+    if len(args) != 1:
+        raise FlowRuntimeError(
+            "retry() expects exactly one argument.",
+            line,
+            col
+        )
+
+    attempts = args[0]
+
+    # Validate integer argument.
+    if not isinstance(attempts, int) or isinstance(attempts, bool):
+        raise FlowRuntimeError(
+            "retry() expects an integer number of attempts.",
+            line,
+            col
+        )
+
+    # Limit retries between 0 and 10.
+    if attempts < 0 or attempts > 10:
+        raise FlowRuntimeError(
+            "Retry attempts must be between 0 and 10.",
+            line,
+            col
+        )
+
+    # retry() is only allowed inside on_fail.
+    if not interpreter.in_on_fail:
+        raise FlowRuntimeError(
+            "retry() can only be called inside an on_fail block.",
+            line,
+            col
+        )
+
+    # Do not request another retry after the limit is exhausted.
+    if interpreter.retry_disabled:
+        return None
+
+    # Signal the interpreter to retry the step.
+    raise RetrySignal(attempts)
+
 
 def builtin_print(args, interpreter, line=0, col=0):
     print(*args)

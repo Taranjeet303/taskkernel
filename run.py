@@ -28,7 +28,7 @@ def main():
 
     interpreter = Interpreter()
     env = Environment()
-    result = interpreter.execute(program, env)
+    result = interpreter.run(program)
     
    
 

@@ -4,7 +4,7 @@ from .ast_nodes import (
     TaskDef, StepDef,
 )
 from .environment import Environment
-from .errors import FlowRuntimeError
+from .errors import FlowRuntimeError, RetrySignal
 from .builtins import BUILTINS
 from typing import Callable
 import time
@@ -26,6 +26,8 @@ class Interpreter:
         self.tasks = {}
         self.log_callback = log_callback
         self.current_step = None
+        self.in_on_fail = False
+        self.retry_disabled = False
 
     def emit_log(self, event: dict):
         
@@ -460,7 +462,127 @@ class Interpreter:
             return r.value
 
         return None
- #------------------- flow execution----------------     
+ #------------------- flow execution----------------  
+    def execute_step_with_retry(self, item, flow_env):
+        start_time = time.time()
+        retries_allowed = 0
+        retries_used = 0
+
+        while True:
+            step_env = Environment(parent=flow_env)
+
+            try:
+                self.execute_block(item.body, step_env)
+
+                duration_ms = int((time.time() - start_time) * 1000)
+
+                self.emit_log({
+                    "type": "step",
+                    "step": item.label,
+                    "message": "Step completed",
+                    "status": "success",
+                    "line": item.line,
+                    "col": item.col,
+                    "duration_ms": duration_ms,
+                    "timestamp": time.time(),
+                })
+
+                return
+
+            except FlowRuntimeError as error:
+
+                self.emit_log({
+                    "type": "step",
+                    "step": item.label,
+                    "message": f"Step failed: {error.message}",
+                    "status": "failed",
+                    "line": item.line,
+                    "col": item.col,
+                    "duration_ms": int((time.time() - start_time) * 1000),
+                    "timestamp": time.time(),
+                })
+
+                if item.on_fail is None:
+                    raise
+
+                fail_env = Environment(parent=flow_env)
+
+                previous_state = self.in_on_fail
+                self.in_on_fail = True
+
+                try:
+                    self.execute_block(item.on_fail.body, fail_env)
+
+                    # No retry requested: preserve existing recovery behavior.
+                    self.emit_log({
+                        "type": "step",
+                        "step": item.label,
+                        "message": "on_fail handler completed",
+                        "status": "recovered",
+                        "line": item.line,
+                        "col": item.col,
+                        "duration_ms": 0,
+                        "timestamp": time.time(),
+                    })
+
+                    return
+
+                except RetrySignal as signal:
+
+                    if retries_used == 0:
+                        retries_allowed = signal.attempts
+
+                    if retries_used >= retries_allowed:
+                        # Retry limit reached. Run on_fail one final time.
+                        self.in_on_fail = previous_state
+                        self.run_final_on_fail(item, flow_env)
+                        return
+
+                finally:
+                    self.in_on_fail = previous_state
+
+                delay = min(2 ** retries_used, 30)
+
+                self.emit_log({
+                    "type": "retry",
+                    "step": item.label,
+                    "message": f"Retrying after failure: {error.message}",
+                    "status": "retrying",
+                    "attempt": retries_used + 1,
+                    "max_retries": retries_allowed,
+                    "delay_seconds": delay,
+                    "timestamp": time.time(),
+                })
+
+                time.sleep(delay)
+                retries_used += 1   
+
+    def run_final_on_fail(self, item, flow_env):
+        fail_env = Environment(parent=flow_env)
+
+        previous_state = self.in_on_fail
+        previous_disabled = self.retry_disabled
+
+        self.in_on_fail = True
+        self.retry_disabled = True
+
+        try:
+            self.execute_block(item.on_fail.body, fail_env)
+
+            self.emit_log({
+                "type": "step",
+                "step": item.label,
+                "message": "Final on_fail handler completed after retries",
+                "status": "recovered",
+                "line": item.line,
+                "col": item.col,
+                "duration_ms": 0,
+                "timestamp": time.time(),
+            })
+
+        finally:
+            self.in_on_fail = previous_state
+            self.retry_disabled = previous_disabled            
 
     def run(self, program):
         """Execute all flows in the program in order."""
@@ -499,81 +621,8 @@ class Interpreter:
                     # Track which step is currently executing.
                     self.current_step = item.label
 
-                    # Start timing the step.
-                    start_time = time.time()
-
                     try:
-                        step_env = Environment(parent=flow_env)
-
-                        self.execute_block(
-                            item.body,
-                            step_env
-                        )
-
-                        # Step completed successfully.
-                        duration_ms = int(
-                            (time.time() - start_time) * 1000
-                        )
-
-                        self.emit_log({
-                            "type": "step",
-                            "step": item.label,
-                            "message": "Step completed",
-                            "status": "success",
-                            "line": item.line,
-                            "col": item.col,
-                            "duration_ms": duration_ms,
-                            "timestamp": time.time(),
-})
-
-                    except FlowRuntimeError as error:
-
-                        # Step failed.
-                        duration_ms = int(
-                            (time.time() - start_time) * 1000
-                        )
-
-                        self.emit_log({
-                            "type": "step",
-                            "step": item.label,
-                            "message": f"Step failed: {error.message}",
-                            "status": "failed",
-                            "line": item.line,
-                            "col": item.col,
-                            "duration_ms": duration_ms,
-                            "timestamp": time.time(),
-})
-
-                        # Run on_fail if it exists.
-                        if item.on_fail is not None:
-
-                            fail_start_time = time.time()
-
-                            fail_env = Environment(parent=flow_env)
-
-                            self.execute_block(
-                                item.on_fail.body,
-                                fail_env
-                            )
-
-                            # on_fail completed successfully.
-                            fail_duration_ms = int(
-                                (time.time() - fail_start_time) * 1000
-                            )
-
-                            self.emit_log({
-                                "type": "step",
-                                "step": item.label,
-                                "message": "on_fail handler completed",
-                                "status": "recovered",
-                                "line": item.line,
-                                "col": item.col,
-                                "duration_ms": fail_duration_ms,
-                                "timestamp": time.time(),
-})
-
-                        else:
-                            raise
+                        self.execute_step_with_retry(item, flow_env)
 
                     finally:
                         # No step is currently active after this block.
@@ -582,6 +631,7 @@ class Interpreter:
                 # Ordinary statements directly inside the flow.
                 else:
                     self.execute(item, flow_env)
+
 
     def build_builtin_log_details(self, name, arguments, result):
         if name == "log":
