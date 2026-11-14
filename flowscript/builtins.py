@@ -870,14 +870,61 @@ def builtin_notify(args, interpreter, line=0, col=0):
 # Runtime Operations
 # -------------------------
 
+
 def builtin_log(args, interpreter, line=0, col=0):
-    print(f"[LOG] {args[0]}")
+
+    if len(args) != 1:
+        raise FlowRuntimeError(
+            "log() expects exactly one argument.",
+            line,
+            col
+        )
+
+    value = args[0]
+
+    # Convert values into readable strings.
+    if isinstance(value, str):
+        message = value
+    else:
+        try:
+            message = json.dumps(
+                value,
+                ensure_ascii=False,
+                default=repr
+            )
+        except Exception:
+            try:
+                message = repr(value)
+            except Exception:
+                message = f"<unserializable {type(value).__name__}>"
+
+    # Limit message size to 10 KB (characters).
+    max_length = 10_000
+    truncated = len(message) > max_length
+
+    if truncated:
+        suffix = "... [truncated]"
+        message = message[:max_length - len(suffix)] + suffix
+
+    # Emit the user-facing log event.
+    interpreter.emit_log({
+        "type": "user_log",
+        "step": interpreter.current_step,
+        "message": message,
+        "status": "success",
+        "line": line,
+        "col": col,
+        "truncated": truncated,
+        "timestamp": time.time(),
+    })
 
     return {
         "success": True,
         "operation": "log",
-        "message": args[0],
+        "message": message,
+        "truncated": truncated,
     }
+
 
 
 def builtin_wait(args, interpreter, line=0, col=0):

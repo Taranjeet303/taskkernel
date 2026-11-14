@@ -30,9 +30,13 @@ class Interpreter:
         self.retry_disabled = False
 
     def emit_log(self, event: dict):
-        
+
         if self.log_callback:
-            self.log_callback(event)
+            try:
+                self.log_callback(event)
+            except Exception:
+                # Logging failures must not interrupt workflow execution.
+                pass
 
     def is_number(self, value) -> bool:
         return isinstance(value, (int, float)) and not isinstance(value, bool)    
@@ -637,11 +641,11 @@ class Interpreter:
         if name == "log":
             return {
                 "args": {
-                    "message": arguments[0] if arguments else ""
+                    "message": result.get("message") if isinstance(result, dict) else None
                 },
                 "result_summary": {
-                    "operation": result.get("operation") if isinstance(result, dict) else None,
                     "success": result.get("success") if isinstance(result, dict) else None,
+                    "truncated": result.get("truncated") if isinstance(result, dict) else None,
                 },
             }
 
