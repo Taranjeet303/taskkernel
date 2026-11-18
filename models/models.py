@@ -19,6 +19,7 @@ class ExecutionStatus(str, Enum):
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    TIMED_OUT = "timed_out"
 
 
 # -------------------------
@@ -97,6 +98,18 @@ class Execution(Base):
 
     error_message: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True
+    )
+
+    # NEW: Failure category
+    error_type: Mapped[str | None] = mapped_column(
+        String(30),
+        nullable=True
+    )
+
+    # NEW: Actual exception class
+    exception_type: Mapped[str | None] = mapped_column(
+        String(100),
         nullable=True
     )
 
