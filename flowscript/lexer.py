@@ -1,5 +1,5 @@
 from flowscript.tokens import Token, TokenType, KEYWORDS
-
+from flowscript.errors import FlowScriptError
 
 class Lexer:
     def __init__(self, source: str):
@@ -181,10 +181,11 @@ class Lexer:
                     self.identifier()
 
                 else:
-                    raise SyntaxError(
-                        f"Unexpected character '{char}' "
-                        f"at line {self.line}, column {self.col}"
-                    )
+                    raise FlowScriptError(
+                            f"Unexpected character '{char}'",
+                            self.line,
+                            self.col
+)
                 
     def string(self):
                     start_line = self.line

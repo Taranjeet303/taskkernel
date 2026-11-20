@@ -12,9 +12,11 @@ from models.models import (
 )
 
 from flowscript import lexer, parser, interpreter
-from flowscript.errors import FlowRuntimeError
-from flowscript.parser import ParseError
+from flowscript.errors import FlowScriptError
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 def make_log_callback(
     db,
@@ -53,60 +55,122 @@ def make_log_callback(
 
     return callback
 
+def mark_execution_failed(
+    db,
+    execution_uuid: UUID,
+    error_type: str,
+    error_message: str,
+    exception_type: str | None = None,
+    error_line: int | None = None,
+    error_col: int | None = None,
+    status: ExecutionStatus = ExecutionStatus.FAILED,
+):
+    try:
+        # Discard any incomplete transaction.
+        db.rollback()
+
+        # Fetch a fresh execution record.
+        execution = (
+            db.query(Execution)
+            .filter(Execution.id == execution_uuid)
+            .first()
+        )
+
+        if execution is None:
+            logger.error(
+                "Cannot record failure: execution %s was not found.",
+                execution_uuid,
+            )
+            return
+
+        execution.status = status
+        execution.error_type = error_type
+        execution.error_message = error_message
+        execution.exception_type = exception_type
+        execution.error_line = error_line
+        execution.error_col = error_col
+        execution.finished_at = datetime.now(timezone.utc)
+
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Failed to persist failure status for execution %s",
+            execution_uuid,
+        )
+        raise
+
 
 @celery_app.task(name="run_script_execution")
 def run_script_execution_task(execution_id: str):
 
     db = SessionLocal()
+    execution_uuid = None
 
     try:
         # --------------------------------
-        # 1. Find execution
+        # 1. Validate execution ID
+        # --------------------------------
+
+        execution_uuid = UUID(execution_id)
+
+        # --------------------------------
+        # 2. Find execution
         # --------------------------------
 
         execution = (
             db.query(Execution)
-            .filter(
-                Execution.id == UUID(execution_id)
-            )
+            .filter(Execution.id == execution_uuid)
             .first()
         )
 
         if execution is None:
+            logger.warning(
+                "Execution %s was not found.",
+                execution_id,
+            )
             return
 
         # --------------------------------
-        # 2. Find associated script
+        # 3. Find associated script
         # --------------------------------
 
         script = (
             db.query(Script)
-            .filter(
-                Script.id == execution.script_id
-            )
+            .filter(Script.id == execution.script_id)
             .first()
         )
 
         if script is None:
-            execution.status = ExecutionStatus.FAILED
-            execution.error_message = "Script not found"
-            execution.finished_at = datetime.now(timezone.utc)
-
-            db.commit()
-
+            mark_execution_failed(
+                db=db,
+                execution_uuid=execution_uuid,
+                error_type="SYSTEM_ERROR",
+                error_message="Associated script was not found.",
+                exception_type=None,
+            )
             return
 
         # --------------------------------
-        # 3. Mark execution as RUNNING
+        # 4. Mark execution as RUNNING
         # --------------------------------
 
         execution.status = ExecutionStatus.RUNNING
         execution.started_at = datetime.now(timezone.utc)
+        execution.finished_at = None
+
+        # Clear previous error information.
+        execution.error_type = None
+        execution.error_message = None
+        execution.exception_type = None
+        execution.error_line = None
+        execution.error_col = None
 
         db.commit()
 
         # --------------------------------
-        # 4. Create worker-side log callback
+        # 5. Create worker-side log callback
         # --------------------------------
 
         log_callback = make_log_callback(
@@ -115,7 +179,7 @@ def run_script_execution_task(execution_id: str):
         )
 
         # --------------------------------
-        # 5. Run FlowScript
+        # 6. Run FlowScript
         # --------------------------------
 
         tokens = lexer.Lexer(
@@ -133,54 +197,61 @@ def run_script_execution_task(execution_id: str):
         runtime.run(program)
 
         # --------------------------------
-        # 6. Execution succeeded
+        # 7. Execution succeeded
         # --------------------------------
 
         execution.status = ExecutionStatus.SUCCEEDED
         execution.finished_at = datetime.now(timezone.utc)
 
-        db.commit()
-
-    except ParseError as error:
-
-        # --------------------------------
-        # 7. FlowScript syntax error
-        # --------------------------------
-
-        execution.status = ExecutionStatus.FAILED
-        execution.error_message = error.message
-        execution.error_line = error.line
-        execution.error_col = error.col
-        execution.finished_at = datetime.now(timezone.utc)
+        # Ensure successful executions have no error information.
+        execution.error_type = None
+        execution.error_message = None
+        execution.exception_type = None
+        execution.error_line = None
+        execution.error_col = None
 
         db.commit()
 
-    except FlowRuntimeError as error:
+    # --------------------------------
+    # 8. FlowScript errors
+    # --------------------------------
 
-        # --------------------------------
-        # 8. FlowScript runtime error
-        # --------------------------------
+    except FlowScriptError as error:
 
-        execution.status = ExecutionStatus.FAILED
-        execution.error_message = error.message
-        execution.error_line = error.line
-        execution.error_col = error.col
-        execution.finished_at = datetime.now(timezone.utc)
+        mark_execution_failed(
+            db=db,
+            execution_uuid=execution_uuid,
+            error_type="SCRIPT_ERROR",
+            error_message=error.message,
+            exception_type=type(error).__name__,
+            error_line=error.line,
+            error_col=error.col,
+        )
 
-        db.commit()
+        # Expected script failure.
+        # Do not re-raise or trigger a Celery retry.
+
+    # --------------------------------
+    # 9. Unexpected worker errors
+    # --------------------------------
 
     except Exception as error:
 
-        # --------------------------------
-        # 9. Unexpected worker error
-        # --------------------------------
+        logger.exception(
+            "Unexpected error while executing script. Execution ID: %s",
+            execution_id,
+        )
 
-        execution.status = ExecutionStatus.FAILED
-        execution.error_message = str(error)
-        execution.finished_at = datetime.now(timezone.utc)
+        if execution_uuid is not None:
+            mark_execution_failed(
+                db=db,
+                execution_uuid=execution_uuid,
+                error_type="SYSTEM_ERROR",
+                error_message="An internal error occurred during execution.",
+                exception_type=type(error).__name__,
+            )
 
-        db.commit()
-
+        # Keep unexpected failures visible to Celery.
         raise
 
     finally:

@@ -1,0 +1,8 @@
+flow parser_error_test {
+    step "Parser Error" {
+        let x = 10
+        if (x > 5 {
+            print("This should fail")
+        }
+    }
+}

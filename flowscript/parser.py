@@ -32,13 +32,16 @@ from .ast_nodes import (
     Program,
 )
 
-
-class ParseError(Exception):
+from flowscript.errors import FlowScriptError
+class ParseError(FlowScriptError):
     def __init__(self, message: str, line: int, col: int):
         self.message = message
         self.line = line
         self.col = col
-        super().__init__(f"Parse error at line {line}, col {col}: {message}")
+        Exception.__init__(
+            self,
+            f"Parse error at line {line}, col {col}: {message}"
+        )
 
 
 class Parser:
