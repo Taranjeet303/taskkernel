@@ -14,6 +14,8 @@ from models.models import (
 from flowscript import lexer, parser, interpreter
 from flowscript.errors import FlowScriptError
 
+from celery.exceptions import SoftTimeLimitExceeded
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -102,7 +104,8 @@ def mark_execution_failed(
         raise
 
 
-@celery_app.task(name="run_script_execution",  acks_late=True)
+@celery_app.task(name="run_script_execution",  acks_late=True, soft_time_limit=50,
+    time_limit=60,)
 def run_script_execution_task(execution_id: str):
 
     db = SessionLocal()
@@ -208,9 +211,7 @@ def run_script_execution_task(execution_id: str):
             tokens
         ).parse()
 
-        runtime = interpreter.Interpreter(
-            log_callback=log_callback
-        )
+        runtime = interpreter.Interpreter(log_callback=log_callback)
 
         runtime.run(program)
 
@@ -248,6 +249,24 @@ def run_script_execution_task(execution_id: str):
 
         # Expected script failure.
         # Do not re-raise or trigger a Celery retry.
+
+    except SoftTimeLimitExceeded:
+        logger.warning(
+            "Execution %s exceeded its soft time limit.",
+            execution_id,
+        )
+
+        if execution_uuid is not None:
+            mark_execution_failed(
+                db=db,
+                execution_uuid=execution_uuid,
+                error_type="TIMEOUT",
+                error_message="Execution exceeded the maximum allowed time.",
+                exception_type="SoftTimeLimitExceeded",
+                status=ExecutionStatus.TIMED_OUT,
+            )
+
+        # Do not re-raise. The timeout has been recorded.    
 
     # --------------------------------
     # 9. Unexpected worker errors

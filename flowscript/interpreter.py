@@ -20,14 +20,25 @@ class Interpreter:
     
     def __init__(
         self,
-        log_callback: Callable[[dict], None] | None = None
+        log_callback: Callable[[dict], None] | None = None,
+        max_statements: int = 100_000,
     ):
+        if (
+            not isinstance(max_statements, int)
+            or isinstance(max_statements, bool)
+            or max_statements <= 0
+        ):
+            raise ValueError("max_statements must be a positive integer.")
         self.globals = Environment()
         self.tasks = {}
         self.log_callback = log_callback
         self.current_step = None
         self.in_on_fail = False
         self.retry_disabled = False
+
+         # Statement execution budget
+        self.max_statements = max_statements
+        self.executed_statements = 0
 
     def emit_log(self, event: dict):
 
@@ -372,18 +383,28 @@ class Interpreter:
    
     
     def execute(self, stmt, env: Environment):
-                """Dispatch to the correct exec_* method based on statement type."""
-                method_name = f"exec_{type(stmt).__name__}"
-                method = getattr(self, method_name, None)
-        
-                if method is None:
-                    raise FlowRuntimeError(
-                        f"No executor for statement type {type(stmt).__name__}",
-                        getattr(stmt, "line", 0),
-                        getattr(stmt, "col", 0),
-                    )
-        
-                return method(stmt, env)
+        """Dispatch to the correct exec_* method based on statement type."""
+
+        self.executed_statements += 1
+
+        if self.executed_statements > self.max_statements:
+            raise FlowRuntimeError(
+                f"Execution exceeded maximum of {self.max_statements} statements.",
+                getattr(stmt, "line", 0),
+                getattr(stmt, "col", 0),
+            )
+
+        method_name = f"exec_{type(stmt).__name__}"
+        method = getattr(self, method_name, None)
+
+        if method is None:
+            raise FlowRuntimeError(
+                f"No executor for statement type {type(stmt).__name__}",
+                getattr(stmt, "line", 0),
+                getattr(stmt, "col", 0),
+            )
+
+        return method(stmt, env)
     
     def execute_block(self, statements: list, env: Environment):
             """Execute a list of statements in a given environment."""

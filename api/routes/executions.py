@@ -6,9 +6,38 @@ from sqlalchemy.orm import Session
 from api.schemas import ExecutionResponse, ExecutionLogResponse
 from db.session import get_db
 from models.models import Script, Execution, ExecutionStatus, ExecutionLog
+from datetime import datetime, timezone
 
 from worker.tasks import run_script_execution_task
 router = APIRouter()
+
+# Maximum time an execution can remain RUNNING before being considered stuck.
+EXECUTION_TIMEOUT_SECONDS = 360
+
+
+def cleanup_stuck_execution(db: Session, execution: Execution):
+    if execution.status != ExecutionStatus.RUNNING:
+        return
+
+    if execution.started_at is None:
+        return
+
+    now = datetime.now(timezone.utc)
+    elapsed = now - execution.started_at
+
+    if elapsed.total_seconds() <= EXECUTION_TIMEOUT_SECONDS:
+        return
+
+    execution.status = ExecutionStatus.FAILED
+    execution.error_type = "WORKER_LOST"
+    execution.exception_type = None
+    execution.error_message = (
+        "Worker appears to have been lost while executing this script."
+    )
+    execution.finished_at = now
+
+    db.commit()
+    db.refresh(execution)
 
 @router.post("/scripts/{script_id}/run", response_model=ExecutionResponse)
 def run_script(
@@ -65,6 +94,7 @@ def get_execution(
             status_code=404,
             detail="Execution not found"
         )
+    cleanup_stuck_execution(db, execution)
 
     return execution
 
@@ -81,6 +111,8 @@ def list_executions(
         .order_by(Execution.started_at.desc())
         .all()
     )
+    for execution in executions:
+        cleanup_stuck_execution(db, execution)
 
     return executions    
 
