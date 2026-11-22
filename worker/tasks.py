@@ -102,7 +102,7 @@ def mark_execution_failed(
         raise
 
 
-@celery_app.task(name="run_script_execution")
+@celery_app.task(name="run_script_execution",  acks_late=True)
 def run_script_execution_task(execution_id: str):
 
     db = SessionLocal()
@@ -153,21 +153,39 @@ def run_script_execution_task(execution_id: str):
             return
 
         # --------------------------------
-        # 4. Mark execution as RUNNING
+        # 4. Atomically claim execution
         # --------------------------------
 
-        execution.status = ExecutionStatus.RUNNING
-        execution.started_at = datetime.now(timezone.utc)
-        execution.finished_at = None
-
-        # Clear previous error information.
-        execution.error_type = None
-        execution.error_message = None
-        execution.exception_type = None
-        execution.error_line = None
-        execution.error_col = None
+        claimed = (
+            db.query(Execution)
+            .filter(
+                Execution.id == execution_uuid,
+                Execution.status == ExecutionStatus.SUBMITTED,
+            )
+            .update(
+                {
+                    Execution.status: ExecutionStatus.RUNNING,
+                    Execution.started_at: datetime.now(timezone.utc),
+                    Execution.finished_at: None,
+                    Execution.error_type: None,
+                    Execution.error_message: None,
+                    Execution.exception_type: None,
+                    Execution.error_line: None,
+                    Execution.error_col: None,
+                },
+                synchronize_session=False,
+            )
+        )
 
         db.commit()
+
+        # If this worker did not claim the execution, skip it.
+        if claimed == 0:
+            logger.info(
+                "Execution %s is already claimed or completed. Skipping.",
+                execution_id,
+            )
+            return
 
         # --------------------------------
         # 5. Create worker-side log callback
