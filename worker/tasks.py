@@ -57,6 +57,7 @@ def make_log_callback(
 
     return callback
 
+
 def mark_execution_failed(
     db,
     execution_uuid: UUID,
@@ -71,29 +72,37 @@ def mark_execution_failed(
         # Discard any incomplete transaction.
         db.rollback()
 
-        # Fetch a fresh execution record.
-        execution = (
+        now = datetime.now(timezone.utc)
+
+        # Only update executions that are still RUNNING.
+        updated = (
             db.query(Execution)
-            .filter(Execution.id == execution_uuid)
-            .first()
+            .filter(
+                Execution.id == execution_uuid,
+                Execution.status == ExecutionStatus.RUNNING,
+            )
+            .update(
+                {
+                    Execution.status: status,
+                    Execution.error_type: error_type,
+                    Execution.error_message: error_message,
+                    Execution.exception_type: exception_type,
+                    Execution.error_line: error_line,
+                    Execution.error_col: error_col,
+                    Execution.finished_at: now,
+                },
+                synchronize_session=False,
+            )
         )
 
-        if execution is None:
-            logger.error(
-                "Cannot record failure: execution %s was not found.",
+        db.commit()
+
+        if updated == 0:
+            logger.warning(
+                "Execution %s was already moved out of RUNNING. "
+                "Skipping failure status update.",
                 execution_uuid,
             )
-            return
-
-        execution.status = status
-        execution.error_type = error_type
-        execution.error_message = error_message
-        execution.exception_type = exception_type
-        execution.error_line = error_line
-        execution.error_col = error_col
-        execution.finished_at = datetime.now(timezone.utc)
-
-        db.commit()
 
     except Exception:
         db.rollback()
@@ -103,9 +112,12 @@ def mark_execution_failed(
         )
         raise
 
-
-@celery_app.task(name="run_script_execution",  acks_late=True, soft_time_limit=50,
-    time_limit=60,)
+@celery_app.task(
+    name="run_script_execution",
+    acks_late=True,
+    soft_time_limit=50,
+    time_limit=60,
+)
 def run_script_execution_task(execution_id: str):
 
     db = SessionLocal()
@@ -135,28 +147,9 @@ def run_script_execution_task(execution_id: str):
             )
             return
 
+       
         # --------------------------------
-        # 3. Find associated script
-        # --------------------------------
-
-        script = (
-            db.query(Script)
-            .filter(Script.id == execution.script_id)
-            .first()
-        )
-
-        if script is None:
-            mark_execution_failed(
-                db=db,
-                execution_uuid=execution_uuid,
-                error_type="SYSTEM_ERROR",
-                error_message="Associated script was not found.",
-                exception_type=None,
-            )
-            return
-
-        # --------------------------------
-        # 4. Atomically claim execution
+        # 3. Atomically claim execution
         # --------------------------------
 
         claimed = (
@@ -190,14 +183,35 @@ def run_script_execution_task(execution_id: str):
             )
             return
 
+        
+
+        # --------------------------------
+        # 4. Find associated script
+        # --------------------------------
+        
+        script = (
+           db.query(Script)
+           .filter(Script.id == execution.script_id)
+           .first()
+                )
+        
+        if script is None:
+            mark_execution_failed(
+                        db=db,
+                        execution_uuid=execution_uuid,
+                        error_type="SYSTEM_ERROR",
+                        error_message="Associated script was not found.",
+                        exception_type=None,
+                    )
+            return
         # --------------------------------
         # 5. Create worker-side log callback
         # --------------------------------
-
+        
         log_callback = make_log_callback(
             db,
             execution.id
-        )
+                )
 
         # --------------------------------
         # 6. Run FlowScript
@@ -215,21 +229,41 @@ def run_script_execution_task(execution_id: str):
 
         runtime.run(program)
 
+        
         # --------------------------------
         # 7. Execution succeeded
         # --------------------------------
 
-        execution.status = ExecutionStatus.SUCCEEDED
-        execution.finished_at = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
 
-        # Ensure successful executions have no error information.
-        execution.error_type = None
-        execution.error_message = None
-        execution.exception_type = None
-        execution.error_line = None
-        execution.error_col = None
+        updated = (
+            db.query(Execution)
+            .filter(
+                Execution.id == execution_uuid,
+                Execution.status == ExecutionStatus.RUNNING,
+            )
+            .update(
+                {
+                    Execution.status: ExecutionStatus.SUCCEEDED,
+                    Execution.finished_at: now,
+                    Execution.error_type: None,
+                    Execution.error_message: None,
+                    Execution.exception_type: None,
+                    Execution.error_line: None,
+                    Execution.error_col: None,
+                },
+                synchronize_session=False,
+            )
+        )
 
         db.commit()
+
+        if updated == 0:
+            logger.warning(
+                "Execution %s was already moved out of RUNNING. "
+                "Skipping success status update.",
+                execution_id,
+            )
 
     # --------------------------------
     # 8. FlowScript errors
